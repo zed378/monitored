@@ -9,7 +9,10 @@ async function listContainers() {
       const state = container.State;
 
       if (!acc[state]) {
-        acc[state] = [];
+        acc[state] = {
+          count: 0,
+          containers: [],
+        };
       }
 
       const ports = container.Ports.map((port) => ({
@@ -18,17 +21,30 @@ async function listContainers() {
         type: port.type,
       }));
 
-      acc[state].push({
+      acc[state].containers.push({
         id: container.Id,
-        name: container.Names[0].replace("/", ""),
+        names: container.Names,
         image: container.Image,
-        ports,
+        ports: ports,
       });
+
+      acc[state].count += 1;
 
       return acc;
     }, {});
 
-    console.log(containerGroups);
+    const total = {};
+
+    for (const state in containerGroups) {
+      total[state] = containerGroups[state].count;
+    }
+
+    const data = {
+      containerCount: { total: containers.length, byState: total },
+      data: containerGroups,
+    };
+
+    console.log(data);
   } catch (error) {
     console.error("Error fetching containers:", error);
   }
