@@ -139,7 +139,9 @@ const cronBackup = () => {
     logger.info("Running backup data folder");
 
     try {
-      const response = await axios.get("http://localhost:5000/backup/start");
+      const response = await axios.get(
+        `http://localhost:${process.env.PORT}/backup/start`
+      );
       console.log("Backup response:", response.data);
       logger.info("Backup response:", response.data);
     } catch (error) {
