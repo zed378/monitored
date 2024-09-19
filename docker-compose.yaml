@@ -1,0 +1,38 @@
+version: "3.9"
+name: monitor-resources
+
+services:
+  mysql:
+    image: mysql:latest
+    container_name: mysql
+    restart: always
+    ports:
+      - 3306:3306
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ":ByOz70c>kel[f(r"
+      MYSQL_DATABASE: monitor
+      MYSQL_USER: monitor
+      MYSQL_PASSWORD: ":ByOz70c>kel[f(r"
+      MYSQL_PORT: 3306
+      MYSQL_HOST: mysql
+
+  # Uncomment service below if you want to manage mysql
+  # It automatically setup.
+  phpmyadmin:
+    image: phpmyadmin
+    container_name: phpmyadmin
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ":ByOz70c>kel[f(r"
+      MYSQL_PASSWORD: ":ByOz70c>kel[f(r"
+      PMA_ARBITRARY: 1
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: ":ByOz70c>kel[f(r"
+    ports:
+      - 8080:80
+    depends_on:
+      - mysql
