@@ -1,7 +1,7 @@
 const Docker = require("dockerode");
 const docker = new Docker();
 
-async function listContainers() {
+exports.listContainers = async (req, res) => {
   try {
     const containers = await docker.listContainers({ all: true });
 
@@ -16,9 +16,9 @@ async function listContainers() {
       }
 
       const ports = container.Ports.map((port) => ({
-        publicPort: port.publicPort,
-        privatePort: port.privatePort,
-        type: port.type,
+        publicPort: port.PublicPort,
+        privatePort: port.PrivatePort,
+        type: port.Type,
       }));
 
       acc[state].containers.push({
@@ -44,10 +44,14 @@ async function listContainers() {
       data: containerGroups,
     };
 
-    console.log(data);
+    res.status(200).send({
+      status: "Success",
+      data,
+    });
   } catch (error) {
-    console.error("Error fetching containers:", error);
+    res.status(400).send({
+      status: "Failed",
+      message: error.message,
+    });
   }
-}
-
-listContainers();
+};
