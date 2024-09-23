@@ -73,29 +73,23 @@ exports.getServices = async (req, res) => {
           }
         );
 
-        const services = result.data.pods.map((items) => {
-          return {
-            Name: items.metadata.name,
-            UID: items.metadata.uid,
-            Type: items.spec.type,
-            Namespace: items.metadata.namespace,
-            Annotations: items.metadata.annotations || {},
-            CreationTimestamp: items.metadata.creationTimestamp,
-            Labels: items.metadata.labels || {},
-            Ports: items.spec.ports.map((port) => ({
-              Name: port.name,
-              NodePort: port.nodePort,
-              Port: port.port,
-              Protocol: port.protocol,
-              TargetPort: port.targetPort,
-            })),
-            Selector: items.spec.selector || null,
-            Applications: items.spec.applications || [],
-            ClusterIPs: items.spec.clusterIPs || [],
-          };
-        });
+        const services =
+          result.data &&
+          result.data.map((item) => {
+            return {
+              name: item.Name,
+              type: item.Type,
+              ports: item.Ports,
+              applications: item.Applications,
+              createdAt: item.CreationTimestamp,
+            };
+          });
 
-        return { namespace, services };
+        return {
+          namespace,
+          total: result?.data === null ? 0 : result.data.length,
+          services: services === null ? 0 : services,
+        };
       })
     );
 
@@ -107,7 +101,6 @@ exports.getServices = async (req, res) => {
     res.status(400).send({
       status: "Failed",
       message: error.message,
-      error: error.response ? error.response.data : error,
     });
   }
 };
