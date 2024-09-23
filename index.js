@@ -20,6 +20,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.set("trust proxy", 1);
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -35,6 +36,18 @@ app.use(xss());
 // Logging
 app.use(accessLog);
 app.use(activityLogger);
+
+// Routes
+const backupRoutes = require("./src/routes/backup");
+const getOSRoute = require("./src/routes/OSInfo");
+const dockerRoutes = require("./src/routes/docker");
+const k8sRoutes = require("./src/routes/k8s");
+
+// Endpoint
+app.use("/backup", backupRoutes);
+app.use("/info", getOSRoute);
+app.use("/docker", dockerRoutes);
+app.use("/k8s", k8sRoutes);
 
 app.get("/", (req, res) => {
   res.status(200).send({
