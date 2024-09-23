@@ -139,7 +139,11 @@ exports.getMetrics = async (req, res) => {
           creationTimestamp: pod.metadata.creationTimestamp,
         }));
 
-        return { namespace, pods };
+        return {
+          namespace,
+          total: pods.length,
+          pods: pods.length === 0 ? 0 : pods,
+        };
       })
     );
 

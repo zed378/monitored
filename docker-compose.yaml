@@ -1,7 +1,33 @@
-version: "3.9"
 name: monitor-resources
 
 services:
+  # app:
+  #   image: zed378/monitoring:latest
+  #   container_name: app
+  #   restart: always
+  #   ports:
+  #     - 6789:6789
+  #   volumes:
+  #     - ./log:/app/log
+  #     - ./backup/:/app/backup
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   environment:
+  #     PORT: 6789
+  #     SECRET: b5a4f2eea787e66215fa0887404b7aaa4a08b9a72b27e009734381cec4f6f28b8b00fb763e1ec90ae5a4d7da0c693572cb6016c33b6c8049b8e2202b4051c10a
+  #     BACKUP_SCHEDULER: "0 0 * * *"
+
+  #     # Database Conn
+  #     DB_HOST: mysql
+  #     DB_USER: root
+  #     DB_PASS: ":ByOz70c>kel[f(r"
+  #     DB_NAME: monitor
+  #     DB_PORT: 3306
+  #     DB_DIALECT: mysql
+
+  #     # Cred
+  #     PTOKEN: "ptr_WCZuwAEYqwkSHXtXtoUDVlQ/ld+Fng1CNGiJi+Bf9rk="
+  #     PURL: https://10.1.200.5:9443/api
+
   mysql:
     image: mysql:latest
     container_name: mysql
