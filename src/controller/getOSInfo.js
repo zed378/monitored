@@ -98,7 +98,7 @@ exports.getNetworkSpeed = async (req, res) => {
         });
 
         resolve(results);
-      }, 1000);
+      }, 100);
     }).then((result) => {
       res.status(200).send({
         status: "Success",

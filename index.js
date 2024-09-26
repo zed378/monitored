@@ -1,11 +1,11 @@
 const express = require("express");
 require("dotenv").config();
 const cors = require("cors");
-const { Connection } = require("./config");
+// const { Connection } = require("./src/config");
 const { ensureFolderExisted } = require("./src/middleware/createFolder");
 const { accessLog } = require("./src/middleware/accessLog");
 const { formatErrorToHTML } = require("./src/middleware/convertToHtml");
-const { cronBackup } = require("./src/middleware/backup");
+// const { cronBackup } = require("./src/middleware/backup");
 
 const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
@@ -42,12 +42,14 @@ const backupRoutes = require("./src/routes/backup");
 const getOSRoute = require("./src/routes/OSInfo");
 const dockerRoutes = require("./src/routes/docker");
 const k8sRoutes = require("./src/routes/k8s");
+const svcListRoutes = require("./src/routes/sysctl");
 
 // Endpoint
 app.use("/backup", backupRoutes);
 app.use("/info", getOSRoute);
 app.use("/docker", dockerRoutes);
 app.use("/k8s", k8sRoutes);
+app.use("/svc", svcListRoutes);
 
 app.get("/", (req, res) => {
   res.status(200).send({
@@ -79,8 +81,8 @@ app.use((err, req, res, next) => {
     .send(formatErrorToHTML("Error Has Been Occured", err.stack));
 });
 
-Connection();
-cronBackup();
+// Connection();
+// cronBackup();
 
 const port = process.env.PORT;
 app.listen(port, () => {

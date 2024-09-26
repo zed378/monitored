@@ -1,0 +1,41 @@
+# Use Ubuntu Jammy as the base image
+FROM ubuntu:jammy
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Set HOME environment variable explicitly for the root user
+ENV HOME=/root
+
+# Install required packages and dependencies
+RUN apt-get update && \
+    apt-get install -y curl build-essential libssl-dev procps 
+
+# Install nvm (Node Version Manager)
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+
+# Install Node.js using nvm and set the default version to 20
+RUN bash -c "source $HOME/.nvm/nvm.sh && nvm install 20 && nvm use 20 && nvm alias default 20"
+
+# Add nvm and node to the PATH to make them available in the environment
+ENV NVM_DIR=$HOME/.nvm
+ENV NODE_VERSION=20
+ENV PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
+
+# Verify node and npm are correctly installed
+RUN bash -c "source $HOME/.nvm/nvm.sh && node -v && npm -v"
+
+# Copy package.json and package-lock.json to the working directory
+COPY package*.json ./
+
+# Install Node.js dependencies using npm
+RUN bash -c "source $HOME/.nvm/nvm.sh && npm install"
+
+# Copy the rest of the application code to the working directory
+COPY . .
+
+# Expose port 6789 for the application
+EXPOSE 6789
+
+# Run the application using npm start, ensuring nvm is sourced properly
+CMD ["bash", "-c", "source $HOME/.nvm/nvm.sh && npm start"]

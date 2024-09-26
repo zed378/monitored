@@ -23,7 +23,7 @@ exports.listContainers = async (req, res) => {
 
       acc[state].containers.push({
         id: container.Id,
-        names: container.Names,
+        name: container.Names[0].replace("/", ""),
         image: container.Image,
         ports: ports,
       });
