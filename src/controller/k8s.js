@@ -159,3 +159,135 @@ exports.getMetrics = async (req, res) => {
     });
   }
 };
+
+exports.getNodeMetrics = async (req, res) => {
+  function convertNanocoresToCores(nanocores) {
+    const val = parseFloat(nanocores.replace("n", ""));
+    return parseFloat((val / 1_000_000_000).toFixed(4));
+  }
+
+  function convertKiBToBytes(kib) {
+    return kib * 1024;
+  }
+
+  try {
+    const { data: nodeData } = await axios.get(
+      `${urlAPI}/endpoints/8/kubernetes/api/v1/nodes`,
+      {
+        headers: header,
+        httpsAgent: agent,
+      }
+    );
+
+    const nodes = await Promise.all(
+      nodeData.items.map(async (node) => {
+        const {
+          metadata: { name, creationTimestamp },
+          status: {
+            capacity: { cpu, memory, pods },
+            allocatable: { "nvidia.com/gpu": gpu },
+            conditions,
+            addresses,
+            nodeInfo: {
+              osImage,
+              kernelVersion,
+              containerRuntimeVersion,
+              kubeletVersion,
+            },
+          },
+        } = node;
+
+        const { data: metricData } = await axios.get(
+          `${urlAPI}/kubernetes/8/metrics/nodes/${name}`,
+          {
+            headers: header,
+            httpsAgent: agent,
+          }
+        );
+
+        const readyCondition = conditions.find(
+          (condition) => condition.type === "Ready"
+        );
+
+        const internalIP = addresses.find(
+          (addr) => addr.type === "InternalIP"
+        ).address;
+
+        const convert = {
+          cpuCoreTotal: parseInt(cpu),
+          cpuCoreUsage: convertNanocoresToCores(metricData.usage.cpu),
+          cpuCoreAvailable:
+            parseInt(cpu) - convertNanocoresToCores(metricData.usage.cpu),
+          cpuUsageInPercent: parseFloat(
+            (
+              (convertNanocoresToCores(metricData.usage.cpu) / parseInt(cpu)) *
+              100
+            ).toFixed(2)
+          ),
+          cpuAvailableInPercent: parseFloat(
+            (
+              ((parseInt(cpu) - convertNanocoresToCores(metricData.usage.cpu)) /
+                parseInt(cpu)) *
+              100
+            ).toFixed(2)
+          ),
+          memoryTotal: convertKiBToBytes(parseInt(memory.replace("Ki", ""))),
+          memoryUsage: convertKiBToBytes(
+            parseInt(metricData.usage.memory.replace("Ki", ""))
+          ),
+          memoryAvailable:
+            convertKiBToBytes(parseInt(memory.replace("Ki", ""))) -
+            convertKiBToBytes(
+              parseInt(metricData.usage.memory.replace("Ki", ""))
+            ),
+          memoryUsageInPercent: parseFloat(
+            (
+              (convertKiBToBytes(
+                parseInt(metricData.usage.memory.replace("Ki", ""))
+              ) /
+                convertKiBToBytes(parseInt(memory.replace("Ki", "")))) *
+              100
+            ).toFixed(2)
+          ),
+          memoryAvailableInPercent: parseFloat(
+            (
+              ((convertKiBToBytes(parseInt(memory.replace("Ki", ""))) -
+                convertKiBToBytes(
+                  parseInt(metricData.usage.memory.replace("Ki", ""))
+                )) /
+                convertKiBToBytes(parseInt(memory.replace("Ki", "")))) *
+              100
+            ).toFixed(2)
+          ),
+        };
+
+        return {
+          name,
+          pods,
+          gpu,
+          ready: readyCondition.status === "True" ? "Ready" : "Not Ready",
+          osImage,
+          kernelVersion,
+          containerRuntimeVersion,
+          kubeletVersion,
+          internalIP,
+          createdAt: creationTimestamp,
+          usage: convert,
+        };
+      })
+    );
+
+    res.status(200).send({
+      status: "Success",
+      data: {
+        total: nodes.length,
+        nodes,
+      },
+    });
+  } catch (error) {
+    res.status(400).send({
+      status: "Failed",
+      message: error.message,
+    });
+  }
+};
