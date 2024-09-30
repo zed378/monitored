@@ -1,4 +1,4 @@
-const { exec, spawn } = require("child_process");
+const { exec, execSync } = require("child_process");
 
 exports.ServicesList = async (req, res) => {
   try {
@@ -33,6 +33,7 @@ exports.ServicesList = async (req, res) => {
               loadState: parts[1], // Load state (loaded, not-found, etc.)
               activeState: parts[2], // Active state (active, inactive, etc.)
               status: parts[3], // Sub-state (running, exited, etc.)
+              pid: null, // Placeholder for PID
             };
           });
 
@@ -43,6 +44,27 @@ exports.ServicesList = async (req, res) => {
         const stoppedServices = services.filter(
           (service) => service.activeState !== "active"
         );
+
+        // Get the PIDs for running services
+        runningServices.forEach((service, index) => {
+          try {
+            // Fetch detailed information about the service using systemctl show
+            const serviceDetails = execSync(
+              `systemctl show ${service.serviceName} --property=MainPID`
+            ).toString();
+            const pidMatch = serviceDetails.match(/MainPID=(\d+)/);
+            if (pidMatch && pidMatch[1] !== "0") {
+              runningServices[index].pid = pidMatch[1]; // Assign the PID if found
+            } else {
+              runningServices[index].pid = "N/A"; // If PID is 0 or not found, set as N/A
+            }
+          } catch (pidError) {
+            console.error(
+              `Error fetching PID for ${service.serviceName}: ${pidError.message}`
+            );
+            runningServices[index].pid = "N/A"; // In case of an error, set as N/A
+          }
+        });
 
         res.status(200).send({
           status: "Success",
