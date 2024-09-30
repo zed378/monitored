@@ -71,8 +71,12 @@ exports.ServicesList = async (req, res) => {
         res.status(200).send({
           status: "Success",
           data: {
-            Running: runningServices,
-            Stopped: stoppedServices,
+            total: {
+              running: runningServices.length,
+              stopped: stoppedServices.length,
+            },
+            running: runningServices,
+            stopped: stoppedServices,
           },
         });
       });
@@ -93,7 +97,7 @@ exports.ServicesList = async (req, res) => {
         }
 
         // Parse and categorize services into 'Running' and 'Stopped'
-        const services = { Running: [], Stopped: [] };
+        const services = { running: [], stopped: [] };
         const serviceBlocks = stdout.split("SERVICE_NAME:").slice(1);
 
         serviceBlocks.forEach((block) => {
@@ -103,8 +107,8 @@ exports.ServicesList = async (req, res) => {
 
           if (statusLine) {
             const status = statusLine.includes("RUNNING")
-              ? "Running"
-              : "Stopped";
+              ? "running"
+              : "stopped";
 
             // Add the service to the corresponding category (Running or Stopped)
             services[status].push({ serviceName, status });
@@ -126,7 +130,7 @@ exports.ServicesList = async (req, res) => {
             .split("\n")
             .filter((line) => line.trim() && !line.startsWith("Image Name"));
 
-          services.Running.forEach((service) => {
+          services.running.forEach((service) => {
             const task = taskList.find((taskLine) =>
               taskLine.includes(service.serviceName)
             );
@@ -140,7 +144,13 @@ exports.ServicesList = async (req, res) => {
 
           res.status(200).send({
             status: "Success",
-            data: services,
+            data: {
+              total: {
+                running: services.running.length,
+                stopped: services.stopped.length,
+              },
+              ...services,
+            },
           });
         });
       });
