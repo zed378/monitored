@@ -6,54 +6,51 @@ exports.ServicesList = async (req, res) => {
     const WINDOWS = process.env.WINDOWS;
 
     if (LINUX == 1) {
-      const command = "ps";
-      const args = ["-eo", "pid,comm", "--sort=pid"];
+      const command = "systemctl list-units --type=service --all --no-pager";
 
-      const child = spawn(command, args, { cwd: "/host_proc" });
-
-      let output = "";
-      let errorOutput = "";
-
-      child.stdout.on("data", (data) => {
-        output += data.toString();
-      });
-
-      child.stderr.on("data", (data) => {
-        errorOutput += data.toString();
-      });
-
-      child.on("close", (code) => {
-        if (code !== 0) {
-          console.error(`Command exited with code ${code}`);
+      exec(command, (error, stdout, stderr) => {
+        if (error) {
+          console.error(`Error executing command: ${error.message}`);
           return res
             .status(500)
-            .send({ status: "Failed", message: errorOutput });
+            .send({ status: "Failed", message: error.message });
         }
 
-        // Parse the output to create a JSON object
-        const services = output
+        if (stderr) {
+          console.error(`Error output: ${stderr}`);
+          return res.status(500).send({ status: "Failed", message: stderr });
+        }
+
+        // Parse the output from systemctl to create a JSON object
+        const services = stdout
           .split("\n")
           .slice(1) // Skip the header row
-          .filter((line) => line.trim()) // Remove any empty lines
+          .filter((line) => line.trim()) // Remove empty lines
           .map((line) => {
             const parts = line.trim().split(/\s+/);
             return {
-              pid: parts[0], // Process ID
-              command: parts.slice(1).join(" "), // Command name (in case it has spaces)
+              serviceName: parts[0], // Service name
+              loadState: parts[1], // Load state (loaded, not-found, etc.)
+              activeState: parts[2], // Active state (active, inactive, etc.)
+              status: parts[3], // Sub-state (running, exited, etc.)
             };
           });
 
+        // Separate the services into "Running" and "Stopped"
+        const runningServices = services.filter(
+          (service) => service.activeState === "active"
+        );
+        const stoppedServices = services.filter(
+          (service) => service.activeState !== "active"
+        );
+
         res.status(200).send({
           status: "Success",
-          data: services,
+          data: {
+            Running: runningServices,
+            Stopped: stoppedServices,
+          },
         });
-      });
-
-      child.on("error", (error) => {
-        console.error(`Error executing command: ${error.message}`);
-        return res
-          .status(500)
-          .send({ status: "Failed", message: error.message });
       });
     } else if (WINDOWS == 1) {
       const command = "sc query type= service state= all";
