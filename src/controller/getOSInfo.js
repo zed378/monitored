@@ -61,6 +61,8 @@ exports.getMemoryUsage = async (req, res) => {
       total: totalMemory,
       used: usedMemory,
       free: freeMemory,
+      usedInPercent: parseFloat(((usedMemory / totalMemory) * 100).toFixed(2)),
+      freeInPercent: parseFloat(((freeMemory / totalMemory) * 100).toFixed(2)),
     };
 
     res.status(200).send({
@@ -113,17 +115,28 @@ exports.getNetworkSpeed = async (req, res) => {
   }
 };
 
-// exports.getNetworkStats = async (req, res) => {
-//   const networkStats = await si.networkStats();
-//   networkStats &&
-//     networkStats.forEach((network, index) => {
-//       console.log(`Interface ${index}:`);
-//       console.log(`   Sent: ${(network.tx_bytes / 1024 / 1024).toFixed(2)} MB`);
-//       console.log(
-//         `   Received: ${(network.rx_bytes / 1024 / 1024).toFixed(2)} MB`
-//       );
-//     });
-// };
+exports.getNetworkStats = async (req, res) => {
+  try {
+    const networkStats = await si.networkStats();
+
+    if (networkStats && networkStats.length > 0) {
+      const networkData = networkStats.map((item, index) => ({
+        interface: `Interface ${index}`,
+        sent: item.tx_byte,
+        received: item.rx_bytes,
+      }));
+
+      res.status(200).json({ status: "Success", data: networkData });
+    } else {
+      res.status(500).json({ status: "Error", message: "Server error" });
+    }
+  } catch (error) {
+    res.status(400).send({
+      status: "Failed",
+      message: error.message,
+    });
+  }
+};
 
 exports.getDiskUsage = async (req, res) => {
   try {
@@ -135,7 +148,8 @@ exports.getDiskUsage = async (req, res) => {
         total: item.size,
         used: item.used,
         available: item.available,
-        useInPercent: item.use,
+        usedInPercent: parseFloat(item.use.toFixed(2)),
+        availableInPercent: parseFloat((100 - item.use).toFixed(2)),
       };
     });
 

@@ -2,11 +2,10 @@ const { exec } = require("child_process");
 
 exports.ServicesList = async (req, res) => {
   try {
-    const LINUX = 0;
-    const WINDOWS = 1;
+    const LINUX = process.env.LINUX;
+    const WINDOWS = process.env.WINDOWS;
 
-    if (LINUX === 1) {
-      // Adjusted command to read from the host's /proc
+    if (LINUX == 1) {
       const command = "ps -eo pid,comm --sort=pid";
 
       exec(command, { cwd: "/host_proc" }, (error, stdout, stderr) => {
@@ -22,16 +21,15 @@ exports.ServicesList = async (req, res) => {
           return res.status(500).send({ status: "Failed", message: stderr });
         }
 
-        // Parse the output to create a JSON object
         const services = stdout
           .split("\n")
           .slice(1) // Skip the header row
-          .filter((line) => line.trim()) // Remove any empty lines
+          .filter((line) => line.trim()) // Remove empty lines
           .map((line) => {
             const parts = line.trim().split(/\s+/);
             return {
               pid: parts[0], // Process ID
-              command: parts.slice(1).join(" "), // Command name (in case it has spaces)
+              command: parts.slice(1).join(" "), // Command name
             };
           });
 
@@ -39,14 +37,8 @@ exports.ServicesList = async (req, res) => {
           status: "Success",
           data: services,
         });
-
-        // Output the list of running services as JSON
-        console.log(JSON.stringify(services, null, 2));
       });
-    } else if (WINDOWS === 1) {
-      // If you want to list only running services just delete "state= all"
-      // If you want to list only stopped services replace
-      // "state= all" into "state= inactive"
+    } else if (WINDOWS == 1) {
       const command = "sc query type= service state= all";
 
       exec(command, (error, stdout, stderr) => {
@@ -62,7 +54,8 @@ exports.ServicesList = async (req, res) => {
           return res.status(500).send({ status: "Failed", message: stderr });
         }
 
-        const services = [];
+        // Parse and categorize services into 'Running' and 'Stopped'
+        const services = { Running: [], Stopped: [] };
         const serviceBlocks = stdout.split("SERVICE_NAME:").slice(1);
 
         serviceBlocks.forEach((block) => {
@@ -74,16 +67,44 @@ exports.ServicesList = async (req, res) => {
             const status = statusLine.includes("RUNNING")
               ? "Running"
               : "Stopped";
-            services.push({ serviceName, status });
+
+            // Add the service to the corresponding category (Running or Stopped)
+            services[status].push({ serviceName, status });
           }
         });
 
-        res.status(200).send({
-          status: "Success",
-          data: services,
-        });
+        // Now we get the PIDs for running services using tasklist
+        const tasklistCommand = "tasklist /svc";
+        exec(tasklistCommand, (taskError, taskStdout, taskStderr) => {
+          if (taskError) {
+            console.error(`Error executing tasklist: ${taskError.message}`);
+            return res
+              .status(500)
+              .send({ status: "Failed", message: taskError.message });
+          }
 
-        console.log(services);
+          // Parse the output of tasklist to extract service PIDs
+          const taskList = taskStdout
+            .split("\n")
+            .filter((line) => line.trim() && !line.startsWith("Image Name"));
+
+          services.Running.forEach((service) => {
+            const task = taskList.find((taskLine) =>
+              taskLine.includes(service.serviceName)
+            );
+            if (task) {
+              const parts = task.trim().split(/\s+/);
+              service.pid = parts[1]; // PID is the second part in tasklist output
+            } else {
+              service.pid = "N/A";
+            }
+          });
+
+          res.status(200).send({
+            status: "Success",
+            data: services,
+          });
+        });
       });
     }
   } catch (error) {

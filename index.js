@@ -1,11 +1,11 @@
 const express = require("express");
 require("dotenv").config();
 const cors = require("cors");
-// const { Connection } = require("./src/config");
+const { Connection } = require("./src/config");
 const { ensureFolderExisted } = require("./src/middleware/createFolder");
 const { accessLog } = require("./src/middleware/accessLog");
 const { formatErrorToHTML } = require("./src/middleware/convertToHtml");
-// const { cronBackup } = require("./src/middleware/backup");
+const { cronBackup } = require("./src/middleware/backup");
 
 const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
@@ -81,8 +81,8 @@ app.use((err, req, res, next) => {
     .send(formatErrorToHTML("Error Has Been Occured", err.stack));
 });
 
-// Connection();
-// cronBackup();
+Connection();
+cronBackup();
 
 const port = process.env.PORT;
 app.listen(port, () => {
