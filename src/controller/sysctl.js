@@ -39,10 +39,12 @@ exports.ServicesList = async (req, res) => {
 
         // Separate the services into "Running" and "Stopped"
         const runningServices = services.filter(
-          (service) => service.activeState === "active"
+          (service) =>
+            service.activeState === "active" && service.status === "running"
         );
         const stoppedServices = services.filter(
-          (service) => service.activeState !== "active"
+          (service) =>
+            service.activeState !== "active" && service.status !== "running"
         );
 
         // Get the PIDs for running services
