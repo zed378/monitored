@@ -81,8 +81,8 @@ app.use((err, req, res, next) => {
     .send(formatErrorToHTML("Error Has Been Occured", err.stack));
 });
 
-Connection();
-cronBackup();
+// Connection();
+// cronBackup();
 
 const port = process.env.PORT;
 app.listen(port, () => {
