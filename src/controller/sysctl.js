@@ -1,4 +1,4 @@
-const { exec } = require("child_process");
+const { exec, spawn } = require("child_process");
 
 exports.ServicesList = async (req, res) => {
   try {
@@ -6,30 +6,40 @@ exports.ServicesList = async (req, res) => {
     const WINDOWS = process.env.WINDOWS;
 
     if (LINUX == 1) {
-      const command = "ps -eo pid,comm --sort=pid";
+      const command = "ps";
+      const args = ["-eo", "pid,comm", "--sort=pid"];
 
-      exec(command, { cwd: "/host_proc" }, (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Error executing command: ${error.message}`);
+      const child = spawn(command, args, { cwd: "/host_proc" });
+
+      let output = "";
+      let errorOutput = "";
+
+      child.stdout.on("data", (data) => {
+        output += data.toString();
+      });
+
+      child.stderr.on("data", (data) => {
+        errorOutput += data.toString();
+      });
+
+      child.on("close", (code) => {
+        if (code !== 0) {
+          console.error(`Command exited with code ${code}`);
           return res
             .status(500)
-            .send({ status: "Failed", message: error.message });
+            .send({ status: "Failed", message: errorOutput });
         }
 
-        if (stderr) {
-          console.error(`Error output: ${stderr}`);
-          return res.status(500).send({ status: "Failed", message: stderr });
-        }
-
-        const services = stdout
+        // Parse the output to create a JSON object
+        const services = output
           .split("\n")
           .slice(1) // Skip the header row
-          .filter((line) => line.trim()) // Remove empty lines
+          .filter((line) => line.trim()) // Remove any empty lines
           .map((line) => {
             const parts = line.trim().split(/\s+/);
             return {
               pid: parts[0], // Process ID
-              command: parts.slice(1).join(" "), // Command name
+              command: parts.slice(1).join(" "), // Command name (in case it has spaces)
             };
           });
 
@@ -37,6 +47,13 @@ exports.ServicesList = async (req, res) => {
           status: "Success",
           data: services,
         });
+      });
+
+      child.on("error", (error) => {
+        console.error(`Error executing command: ${error.message}`);
+        return res
+          .status(500)
+          .send({ status: "Failed", message: error.message });
       });
     } else if (WINDOWS == 1) {
       const command = "sc query type= service state= all";
