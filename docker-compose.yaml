@@ -1,47 +1,47 @@
 name: monitor-resources
 
 services:
-  app:
-    image: zed378/monitoring:ubuntu
-    container_name: app
-    restart: always
-    privileged: true
-    ports:
-      - 6789:6789
-    volumes:
-      - ./log:/app/log
-      - ./backup/:/app/backup
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /proc:/host_proc:ro
-      - /sys:/host_sys:ro
-      - /run/systemd:/run/systemd:ro
-      - /sys/fs/cgroup:/host_cgroup:ro
-    environment:
-      PORT: 6789
-      SECRET: b5a4f2eea787e66215fa0887404b7aaa4a08b9a72b27e009734381cec4f6f28b8b00fb763e1ec90ae5a4d7da0c693572cb6016c33b6c8049b8e2202b4051c10a
-      BACKUP_SCHEDULER: "0 0 * * *"
+  # app:
+  #   image: zed378/monitoring:ubuntu
+  #   container_name: app
+  #   restart: always
+  #   privileged: true
+  #   ports:
+  #     - 6789:6789
+  #   volumes:
+  #     - ./log:/app/log
+  #     - ./backup/:/app/backup
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - /proc:/host_proc:ro
+  #     - /sys:/host_sys:ro
+  #     - /run/systemd:/run/systemd:ro
+  #     - /sys/fs/cgroup:/host_cgroup:ro
+  #   environment:
+  #     PORT: 6789
+  #     SECRET: b5a4f2eea787e66215fa0887404b7aaa4a08b9a72b27e009734381cec4f6f28b8b00fb763e1ec90ae5a4d7da0c693572cb6016c33b6c8049b8e2202b4051c10a
+  #     BACKUP_SCHEDULER: "0 0 * * *"
 
-      # Database Conn
-      DB_HOST: postgresql
-      DB_USER: monitored
-      DB_PASS: ":ByOz70c>kel[f(r"
-      DB_NAME: monitored
-      DB_PORT: 5432
-      DB_DIALECT: postgres
+  #     # Database Conn
+  #     DB_HOST: postgresql
+  #     DB_USER: monitored
+  #     DB_PASS: ":ByOz70c>kel[f(r"
+  #     DB_NAME: monitored
+  #     DB_PORT: 5432
+  #     DB_DIALECT: postgres
 
-      # Cred
-      PTOKEN: "ptr_WCZuwAEYqwkSHXtXtoUDVlQ/ld+Fng1CNGiJi+Bf9rk="
-      PURL: https://10.1.200.5:9443/api
+  #     # Cred
+  #     PTOKEN: "ptr_WCZuwAEYqwkSHXtXtoUDVlQ/ld+Fng1CNGiJi+Bf9rk="
+  #     PURL: https://10.1.200.5:9443/api
 
-      # OS
-      LINUX: 1
-      WINDOWS: 0
+  #     # OS
+  #     LINUX: 1
+  #     WINDOWS: 0
 
-      # MS Teams Hooks
-      WEBHOOK_URL: "https://bodhadharmaja.webhook.office.com/webhookb2/b545888c-37bd-4303-b44f-815d35a8d3f1@65b908be-db42-4118-8a9e-dfaa849664c9/IncomingWebhook/8fecf7762cfd46118ae8f168bc8aac86/13b569d5-4c60-4979-8cf5-6f09256b5aa2"
+  #     # MS Teams Hooks
+  #     WEBHOOK_URL: "https://bodhadharmaja.webhook.office.com/webhookb2/b545888c-37bd-4303-b44f-815d35a8d3f1@65b908be-db42-4118-8a9e-dfaa849664c9/IncomingWebhook/8fecf7762cfd46118ae8f168bc8aac86/13b569d5-4c60-4979-8cf5-6f09256b5aa2"
 
-    # network_mode: host
-    # command: ["bash", "-c", "npm start"]
+  #   # network_mode: host
+  #   # command: ["bash", "-c", "npm start"]
 
   postgresql:
     image: postgres
@@ -59,16 +59,62 @@ services:
       TZ: Asia/Bangkok
       PGTZ: Asia/Bangkok
 
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin
+  # pgadmin:
+  #   image: dpage/pgadmin4
+  #   container_name: pgadmin
+  #   restart: always
+  #   ports:
+  #     - "8888:80"
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: zed@mail.com
+  #     PGADMIN_DEFAULT_PASSWORD: Evazed123!@#
+  #   volumes:
+  #     - ./data/pgadmin:/var/lib/pgadmin
+  #   depends_on:
+  #     - postgresql
+
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    container_name: cloudbeaver
     restart: always
     ports:
-      - "8888:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL: zed@mail.com
-      PGADMIN_DEFAULT_PASSWORD: Evazed123!@#
+      - 8181:8978
     volumes:
-      - ./data/pgadmin:/var/lib/pgadmin
+      - ./data/cloudbeaver:/opt/cloudbeaver/workspace
     depends_on:
       - postgresql
+
+  # mysql:
+  #   image: mysql:latest
+  #   container_name: mysql
+  #   restart: always
+  #   ports:
+  #     - 3306:3306
+  #   volumes:
+  #     - ./data/mysql:/var/lib/mysql
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: ":ByOz70c>kel[f(r"
+  #     MYSQL_DATABASE: monitored
+  #     MYSQL_USER: monitored
+  #     MYSQL_PASSWORD: monitored
+  #     MYSQL_PORT: 3306
+  #     MYSQL_HOST: mysql
+
+  # Uncomment service below if you want to manage mysql
+  # It automatically setup.
+  # phpmyadmin:
+  #   image: phpmyadmin:latest
+  #   container_name: phpmyadmin
+  #   restart: always
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: ":ByOz70c>kel[f(r"
+  #     MYSQL_PASSWORD: ":ByOz70c>kel[f(r"
+  #     PMA_ARBITRARY: 1
+  #     PMA_HOST: mysql
+  #     PMA_PORT: 3306
+  #     PMA_USER: root
+  #     PMA_PASSWORD: ":ByOz70c>kel[f(r"
+  #   ports:
+  #     - 8080:80
+  #   depends_on:
+  #     - mysql

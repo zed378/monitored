@@ -8,23 +8,14 @@ const pass = process.env.DB_PASS;
 const port = process.env.DB_PORT;
 const dialect = process.env.DB_DIALECT;
 
-const baseConfig = {
+const config = {
   dialect,
   host,
   port,
+  database: dbName,
   username: user,
   password: pass,
   timezone: "+07:00",
-};
-
-const mysqlConfig = {
-  ...baseConfig,
-  database: dbName,
-};
-
-const pgConfig = {
-  ...baseConfig,
-  database: dbName,
   dialectOptions: {
     ssl: false,
     useUTC: false,
@@ -32,8 +23,6 @@ const pgConfig = {
   },
   supportsSearchPath: false,
 };
-
-const config = dialect === "mysql" ? mysqlConfig : pgConfig;
 
 // Function to create database if it doesn't exist
 async function createDatabaseIfNotExists() {
@@ -44,18 +33,14 @@ async function createDatabaseIfNotExists() {
   });
 
   try {
-    if (dialect === "mysql") {
-      await sequelize.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\`;`);
-    } else if (dialect === "postgres") {
-      await sequelize
-        .query(`CREATE DATABASE "${dbName}";`, { raw: true })
-        .catch((err) => {
-          // Error code 42P04 indicates the database already exists in PostgreSQL
-          if (err.original.code !== "42P04") {
-            throw err;
-          }
-        });
-    }
+    await sequelize
+      .query(`CREATE DATABASE "${dbName}";`, { raw: true })
+      .catch((err) => {
+        // Error code 42P04 indicates the database already exists in PostgreSQL
+        if (err.original.code !== "42P04") {
+          throw err;
+        }
+      });
     console.log(`Database ${dbName} created or already exists.`);
   } catch (error) {
     console.error("Unable to create database:", error.message);

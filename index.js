@@ -43,6 +43,7 @@ const getOSRoute = require("./src/routes/OSInfo");
 const dockerRoutes = require("./src/routes/docker");
 const k8sRoutes = require("./src/routes/k8s");
 const svcListRoutes = require("./src/routes/sysctl");
+const migrateRoutes = require("./src/routes/migration");
 
 // Endpoint
 app.use("/backup", backupRoutes);
@@ -50,6 +51,7 @@ app.use("/info", getOSRoute);
 app.use("/docker", dockerRoutes);
 app.use("/k8s", k8sRoutes);
 app.use("/svc", svcListRoutes);
+app.use("/migrate", migrateRoutes);
 
 app.get("/", (req, res) => {
   res.status(200).send({
@@ -81,8 +83,8 @@ app.use((err, req, res, next) => {
     .send(formatErrorToHTML("Error Has Been Occured", err.stack));
 });
 
-// Connection();
-// cronBackup();
+Connection();
+cronBackup();
 
 const port = process.env.PORT;
 app.listen(port, () => {

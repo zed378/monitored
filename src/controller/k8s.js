@@ -33,17 +33,23 @@ exports.getEnvironment = async (req, res) => {
 
 exports.getAllNS = async (req, res) => {
   try {
-    const result = await axios.get(urlAPI + "/kubernetes/8/namespaces", {
+    const { data } = await axios.get(urlAPI + "/kubernetes/8/namespaces", {
       headers: header,
       httpsAgent: agent,
     });
 
-    const count = Object.keys(result.data).length;
+    const namespacesArray = Object.entries(data).map(([name, details]) => ({
+      name,
+      ...details,
+    }));
+
+    const sortedResults = namespacesArray.sort((a, b) => {
+      return a.name.localeCompare(b.name);
+    });
 
     res.status(200).send({
       status: "Success",
-      total: count,
-      data: result.data,
+      data: { total: namespacesArray.length, lists: sortedResults },
     });
   } catch (error) {
     res.status(400).send({
@@ -93,9 +99,18 @@ exports.getServices = async (req, res) => {
       })
     );
 
+    const sortedResults = results.sort((a, b) => {
+      return a.namespace.localeCompare(b.namespace);
+    });
+
+    const totalServices = results.reduce((acc, curr) => acc + curr.total, 0);
+
     res.status(200).send({
       status: "Success",
-      data: results,
+      data: {
+        total: totalServices,
+        list: sortedResults,
+      },
     });
   } catch (error) {
     res.status(400).send({
@@ -105,7 +120,7 @@ exports.getServices = async (req, res) => {
   }
 };
 
-exports.getMetrics = async (req, res) => {
+exports.getPodsMetrics = async (req, res) => {
   try {
     const { data } = await axios.get(urlAPI + "/kubernetes/8/namespaces", {
       headers: header,
@@ -113,6 +128,20 @@ exports.getMetrics = async (req, res) => {
     });
 
     const namespaces = Object.keys(data);
+
+    // Define static phases with default values of 0
+    const staticPhases = {
+      Pending: 0,
+      Running: 0,
+      Succeeded: 0,
+      Failed: 0,
+      Unknown: 0,
+      CrashLoopBackoff: 0,
+    };
+
+    // Initialize counters for each phase
+    let totalPods = 0;
+    let phaseCount = { ...staticPhases }; // Start with static phases
 
     const results = await Promise.all(
       namespaces.map(async (namespace) => {
@@ -124,20 +153,35 @@ exports.getMetrics = async (req, res) => {
           }
         );
 
-        const pods = result.data.items.map((pod) => ({
-          name: pod.metadata.name,
-          namespace: pod.metadata.namespace,
-          phase: pod.status.phase,
-          hostIP: pod.status.hostIP,
-          podIP: pod.status.podIP,
-          containerStatuses: pod.status.containerStatuses.map((container) => ({
-            name: container.name,
-            ready: container.ready,
-            restartCount: container.restartCount,
-            image: container.image,
-          })),
-          creationTimestamp: pod.metadata.creationTimestamp,
-        }));
+        const pods = result.data.items.map((pod) => {
+          // Increment total count of pods
+          totalPods++;
+
+          // Count the pod phases
+          const phase = pod.status.phase;
+          if (!phaseCount[phase]) {
+            phaseCount[phase] = 0; // Initialize phase if not present (though unlikely)
+          }
+          phaseCount[phase]++;
+
+          // Return pod details
+          return {
+            name: pod.metadata.name,
+            namespace: pod.metadata.namespace,
+            phase: phase,
+            hostIP: pod.status.hostIP,
+            podIP: pod.status.podIP,
+            containerStatuses: pod.status.containerStatuses.map(
+              (container) => ({
+                name: container.name,
+                ready: container.ready,
+                restartCount: container.restartCount,
+                image: container.image,
+              })
+            ),
+            creationTimestamp: pod.metadata.creationTimestamp,
+          };
+        });
 
         return {
           namespace,
@@ -147,9 +191,19 @@ exports.getMetrics = async (req, res) => {
       })
     );
 
+    const sortedResults = results.sort((a, b) => {
+      return a.namespace.localeCompare(b.namespace);
+    });
+
     res.status(200).send({
       status: "Success",
-      data: results,
+      data: {
+        total: {
+          all: totalPods,
+          byPhase: phaseCount,
+        },
+        lists: sortedResults,
+      },
     });
   } catch (error) {
     res.status(400).send({
