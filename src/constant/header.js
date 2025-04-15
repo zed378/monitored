@@ -12,7 +12,7 @@ const getToken = async () => {
       urlAPI + "/auth",
       {
         username: "admin",
-        password: "1qaz2wsx3edc",
+        password: "celHJvKW4Sj49",
       },
       {
         httpsAgent: agent,

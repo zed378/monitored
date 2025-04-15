@@ -38,13 +38,15 @@ exports.getAllNS = async (req, res) => {
       httpsAgent: agent,
     });
 
-    const namespacesArray = Object.entries(data).map(([name, details]) => ({
-      name,
-      ...details,
-    }));
+    const namespacesArray = data.map((item) => {
+      return {
+        ...item,
+        Status: item.Status.phase,
+      };
+    });
 
     const sortedResults = namespacesArray.sort((a, b) => {
-      return a.name.localeCompare(b.name);
+      return a.Name.localeCompare(b.Name);
     });
 
     res.status(200).send({
@@ -67,7 +69,7 @@ exports.getServices = async (req, res) => {
       httpsAgent: agent,
     });
 
-    const namespaces = Object.keys(data);
+    const namespaces = data.map((ns) => ns.Name);
 
     const results = await Promise.all(
       namespaces.map(async (namespace) => {
@@ -127,7 +129,7 @@ exports.getPodsMetrics = async (req, res) => {
       httpsAgent: agent,
     });
 
-    const namespaces = Object.keys(data);
+    const namespaces = data.map((ns) => ns.Name);
 
     // Define static phases with default values of 0
     const staticPhases = {
