@@ -15,7 +15,7 @@ const CPUInfo = db.define(
       allowNull: false,
     },
     average_usage: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.FLOAT,
       allowNull: false,
     },
     total_core: {

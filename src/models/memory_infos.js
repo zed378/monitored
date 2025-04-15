@@ -27,11 +27,11 @@ const MemoryInfo = db.define(
       allowNull: false,
     },
     usedInPercent: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.FLOAT,
       allowNull: false,
     },
     freeInPercent: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.FLOAT,
       allowNull: false,
     },
     createdAt: {

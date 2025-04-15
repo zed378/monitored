@@ -8,7 +8,10 @@ exports.ensureFolderExisted = () => {
 
   const backupFolder = path.join(rootDir, "backup");
   const dataFolder = path.join(rootDir, "data");
+  const cloudbeaverFolder = path.join(rootDir, "data/cloudbeaver");
   const mysqlFolder = path.join(rootDir, "data/mysql");
+  const pgadminFolder = path.join(rootDir, "data/pgadmin");
+  const postgresFolder = path.join(rootDir, "data/postgres");
   const logFolder = path.join(rootDir, "log");
   const accessLog = path.join(rootDir, "log/access");
   const activityLog = path.join(rootDir, "log/activity");
@@ -39,6 +42,16 @@ exports.ensureFolderExisted = () => {
     logger.info("Data folder existed.");
   }
 
+  // Check if cloudbeaver folder exists or not
+  if (!fs.existsSync(cloudbeaverFolder)) {
+    fs.mkdirSync(cloudbeaverFolder, { recursive: true });
+    console.log("Cloudbeaver folder created.");
+    logger.info("Cloudbeaver folder created.");
+  } else {
+    console.log("Cloudbeaver folder existed.");
+    logger.info("Cloudbeaver folder existed.");
+  }
+
   // Check if mysql folder exists or not
   if (!fs.existsSync(mysqlFolder)) {
     fs.mkdirSync(mysqlFolder, { recursive: true });
@@ -47,6 +60,26 @@ exports.ensureFolderExisted = () => {
   } else {
     console.log("MySQL folder existed.");
     logger.info("MySQL folder existed.");
+  }
+
+  // Check if pgadmin folder exists or not
+  if (!fs.existsSync(pgadminFolder)) {
+    fs.mkdirSync(pgadminFolder, { recursive: true });
+    console.log("PG Admin folder created.");
+    logger.info("PG Admin folder created.");
+  } else {
+    console.log("PG Admin folder existed.");
+    logger.info("PG Admin folder existed.");
+  }
+
+  // Check if postgres folder exists or not
+  if (!fs.existsSync(postgresFolder)) {
+    fs.mkdirSync(postgresFolder, { recursive: true });
+    console.log("PostgreSQL folder created.");
+    logger.info("PostgreSQL folder created.");
+  } else {
+    console.log("PostgreSQL folder existed.");
+    logger.info("PostgreSQL folder existed.");
   }
 
   // Check if log folder exists or not

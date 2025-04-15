@@ -153,7 +153,7 @@ exports.getPodsMetrics = async (req, res) => {
           }
         );
 
-        const pods = result.data.items.map((pod) => {
+        const pods = result?.data?.items?.map((pod) => {
           // Increment total count of pods
           totalPods++;
 
@@ -171,7 +171,7 @@ exports.getPodsMetrics = async (req, res) => {
             phase: phase,
             hostIP: pod.status.hostIP,
             podIP: pod.status.podIP,
-            containerStatuses: pod.status.containerStatuses.map(
+            containerStatuses: pod?.status?.containerStatuses?.map(
               (container) => ({
                 name: container.name,
                 ready: container.ready,
