@@ -6,6 +6,8 @@ const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 const xss = require("xss-clean");
 
+const { scheduledCheckService } = require("./src/middleware/sendAlert");
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -23,7 +25,6 @@ app.use(limiter);
 app.use(helmet());
 app.use(xss());
 
-
 // Routes
 const k8sRoutes = require("./src/routes/k8s");
 
@@ -36,6 +37,8 @@ app.get("/", (req, res) => {
     message: "Your API is running",
   });
 });
+
+scheduledCheckService();
 
 const port = process.env.PORT;
 app.listen(port, () => {
