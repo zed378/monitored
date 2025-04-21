@@ -32,10 +32,7 @@ async function getNonRunningPods() {
         continue;
 
       const nonRunning = ns.pods.filter(
-        (pod) =>
-          pod.phase !== "Running" &&
-          pod.phase !== "Succeeded" &&
-          pod.phase !== "Pending"
+        (pod) => pod.phase !== "Running" && pod.phase !== "Succeeded"
       );
 
       problematicPods.push(...nonRunning);
