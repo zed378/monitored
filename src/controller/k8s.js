@@ -2,10 +2,48 @@ const axios = require("axios");
 const https = require("https");
 const { urlAPI } = require("../constant/env");
 const { header } = require("../constant/header");
+const pLimit = require("p-limit").default;
+const limit = pLimit(5);
 
 const agent = new https.Agent({
   rejectUnauthorized: false,
 });
+
+const api = axios.create({
+  baseURL: urlAPI,
+  headers: header,
+  httpsAgent: agent,
+});
+
+const getKubeEnvironments = async () => {
+  const { data } = await api.get("/endpoints");
+
+  return data.filter(
+    (env) =>
+      env.Type === 6 && // your case
+      env.Status === 1,
+  );
+};
+
+const convertNanocoresToCores = (nano) => {
+  if (!nano) return 0;
+  return parseFloat((parseInt(nano.replace("n", "")) / 1e9).toFixed(4));
+};
+
+const convertMemoryToBytes = (val) => {
+  if (!val) return 0;
+
+  const num = parseInt(val);
+  if (val.endsWith("Ki")) return num * 1024;
+  if (val.endsWith("Mi")) return num * 1024 * 1024;
+  if (val.endsWith("Gi")) return num * 1024 * 1024 * 1024;
+
+  return num; // fallback
+};
+
+const bytesToGB = (bytes) => {
+  return parseFloat((bytes / 1024 ** 3).toFixed(2));
+};
 
 exports.getEnvironment = async (req, res) => {
   try {
@@ -21,7 +59,7 @@ exports.getEnvironment = async (req, res) => {
   } catch (error) {
     console.error(
       "Error in getEnvironment:",
-      error.response ? error.response.data : error.message
+      error.response ? error.response.data : error.message,
     );
     res.status(400).send({
       status: "Failed",
@@ -33,85 +71,172 @@ exports.getEnvironment = async (req, res) => {
 
 exports.getAllNS = async (req, res) => {
   try {
-    const { data } = await axios.get(urlAPI + "/kubernetes/8/namespaces", {
-      headers: header,
-      httpsAgent: agent,
-    });
+    const envs = await getKubeEnvironments();
 
-    const namespacesArray = data.map((item) => {
-      return {
-        ...item,
-        Status: item.Status.phase,
-      };
-    });
+    const results = await Promise.all(
+      envs.map(async (env) => {
+        try {
+          const { data } = await api.get(`/kubernetes/${env.Id}/namespaces`);
 
-    const sortedResults = namespacesArray.sort((a, b) => {
-      return a.Name.localeCompare(b.Name);
-    });
+          const namespaces = (data || [])
+            .map((item) => ({
+              name: item.Name,
+              status: item?.Status?.phase || "Unknown",
+              createdAt: item.CreationTimestamp,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+          return {
+            environment: {
+              id: env.Id,
+              name: env.Name,
+            },
+            total: namespaces.length,
+            namespaces,
+          };
+        } catch (err) {
+          console.error(
+            `Failed fetching namespaces for env ${env.Name}:`,
+            err.message,
+          );
+
+          return {
+            environment: {
+              id: env.Id,
+              name: env.Name,
+            },
+            total: 0,
+            namespaces: [],
+          };
+        }
+      }),
+    );
+
+    // sort environments by name
+    const sorted = results.sort((a, b) =>
+      a.environment.name.localeCompare(b.environment.name),
+    );
+
+    // total across all environments
+    const grandTotal = sorted.reduce((acc, curr) => acc + curr.total, 0);
 
     res.status(200).send({
       status: "Success",
-      data: { total: namespacesArray.length, lists: sortedResults },
+      data: {
+        total: grandTotal,
+        environments: sorted,
+      },
     });
   } catch (error) {
     res.status(400).send({
       status: "Failed",
       message: error.message,
-      error: error.response ? error.response.data : error,
     });
   }
 };
 
 exports.getServices = async (req, res) => {
   try {
-    const { data } = await axios.get(urlAPI + "/kubernetes/8/namespaces", {
-      headers: header,
-      httpsAgent: agent,
-    });
-
-    const namespaces = data.map((ns) => ns.Name);
+    const envs = await getKubeEnvironments();
 
     const results = await Promise.all(
-      namespaces.map(async (namespace) => {
-        const result = await axios.get(
-          `${urlAPI}/kubernetes/8/namespaces/${namespace}/services?lookupapplications=true`,
-          {
-            headers: header,
-            httpsAgent: agent,
-          }
-        );
+      envs.map(async (env) => {
+        try {
+          // 1. get namespaces first
+          const { data: namespacesData } = await api.get(
+            `/kubernetes/${env.Id}/namespaces`,
+          );
 
-        const services =
-          result.data &&
-          result.data.map((item) => {
-            return {
-              name: item.Name,
-              type: item.Type,
-              ports: item.Ports,
-              applications: item.Applications,
-              createdAt: item.CreationTimestamp,
-            };
-          });
+          const namespaces = namespacesData || [];
 
-        return {
-          namespace,
-          total: result?.data === null ? 0 : result.data.length,
-          services: services === null ? 0 : services,
-        };
-      })
+          // 2. fetch services per namespace (with limit)
+          const namespaceResults = await Promise.all(
+            namespaces.map((ns) =>
+              limit(async () => {
+                try {
+                  const { data } = await api.get(
+                    `/kubernetes/${env.Id}/namespaces/${ns.Name}/services?lookupapplications=true`,
+                  );
+
+                  const services = (data || []).map((item) => ({
+                    name: item.Name,
+                    type: item.Type,
+                    ports: item.Ports || [],
+                    applications: item.Applications || [],
+                    createdAt: item.CreationTimestamp,
+                  }));
+
+                  return {
+                    namespace: ns.Name,
+                    total: services.length,
+                    services,
+                  };
+                } catch (err) {
+                  console.error(
+                    `Failed services for ${env.Name}/${ns.Name}:`,
+                    err.message,
+                  );
+
+                  return {
+                    namespace: ns.Name,
+                    total: 0,
+                    services: [],
+                  };
+                }
+              }),
+            ),
+          );
+
+          // sort namespaces
+          const sortedNamespaces = namespaceResults.sort((a, b) =>
+            a.namespace.localeCompare(b.namespace),
+          );
+
+          // total services per environment
+          const totalServices = sortedNamespaces.reduce(
+            (acc, curr) => acc + curr.total,
+            0,
+          );
+
+          return {
+            environment: {
+              id: env.Id,
+              name: env.Name,
+            },
+            total: totalServices,
+            namespaces: sortedNamespaces,
+          };
+        } catch (err) {
+          console.error(
+            `Failed fetching namespaces for env ${env.Name}:`,
+            err.message,
+          );
+
+          return {
+            environment: {
+              id: env.Id,
+              name: env.Name,
+            },
+            total: 0,
+            namespaces: [],
+          };
+        }
+      }),
     );
 
-    const sortedResults = results.sort((a, b) => {
-      return a.namespace.localeCompare(b.namespace);
-    });
+    // sort environments
+    const sorted = results.sort((a, b) =>
+      a.environment.name.localeCompare(b.environment.name),
+    );
 
-    const totalServices = results.reduce((acc, curr) => acc + curr.total, 0);
+    // grand total
+    const grandTotal = sorted.reduce((acc, curr) => acc + curr.total, 0);
 
     res.status(200).send({
       status: "Success",
       data: {
-        total: totalServices,
-        list: sortedResults,
+        total: grandTotal,
+        environments: sorted,
       },
     });
   } catch (error) {
@@ -124,220 +249,311 @@ exports.getServices = async (req, res) => {
 
 exports.getPodsMetrics = async (req, res) => {
   try {
-    const { data } = await axios.get(urlAPI + "/kubernetes/8/namespaces", {
-      headers: header,
-      httpsAgent: agent,
-    });
+    const envs = await getKubeEnvironments();
 
-    const namespaces = data.map((ns) => ns.Name);
-
-    // Define static phases with default values of 0
-    const staticPhases = {
+    const globalPhaseTemplate = {
       Pending: 0,
       Running: 0,
       Succeeded: 0,
       Failed: 0,
       Unknown: 0,
-      CrashLoopBackoff: 0,
+      CrashLoopBackOff: 0,
     };
 
-    // Initialize counters for each phase
-    let totalPods = 0;
-    let phaseCount = { ...staticPhases }; // Start with static phases
+    let globalTotalPods = 0;
+    let globalPhaseCount = { ...globalPhaseTemplate };
 
     const results = await Promise.all(
-      namespaces.map(async (namespace) => {
-        const result = await axios.get(
-          `${urlAPI}/endpoints/8/kubernetes/api/v1/namespaces/${namespace}/pods`,
-          {
-            headers: header,
-            httpsAgent: agent,
-          }
-        );
+      envs.map(async (env) => {
+        try {
+          const { data: namespacesData } = await api.get(
+            `/kubernetes/${env.Id}/namespaces`,
+          );
 
-        const pods = result?.data?.items?.map((pod) => {
-          // Increment total count of pods
-          totalPods++;
+          const namespaces = namespacesData || [];
 
-          // Count the pod phases
-          const phase = pod.status.phase;
-          if (!phaseCount[phase]) {
-            phaseCount[phase] = 0; // Initialize phase if not present (though unlikely)
-          }
-          phaseCount[phase]++;
+          let envTotalPods = 0;
+          let envPhaseCount = { ...globalPhaseTemplate };
 
-          // Return pod details
-          return {
-            name: pod.metadata.name,
-            namespace: pod.metadata.namespace,
-            phase: phase,
-            hostIP: pod.status.hostIP,
-            podIP: pod.status.podIP,
-            containerStatuses: pod?.status?.containerStatuses?.map(
-              (container) => ({
-                name: container.name,
-                ready: container.ready,
-                restartCount: container.restartCount,
-                image: container.image,
-              })
+          const namespaceResults = await Promise.all(
+            namespaces.map((ns) =>
+              limit(async () => {
+                try {
+                  const { data } = await api.get(
+                    `/endpoints/${env.Id}/kubernetes/api/v1/namespaces/${ns.Name}/pods`,
+                  );
+
+                  const items = data?.items || [];
+
+                  const pods = items.map((pod) => {
+                    const phase = pod?.status?.phase || "Unknown";
+
+                    // detect CrashLoopBackOff
+                    const isCrashLoop = pod?.status?.containerStatuses?.some(
+                      (c) => c?.state?.waiting?.reason === "CrashLoopBackOff",
+                    );
+
+                    const finalPhase = isCrashLoop ? "CrashLoopBackOff" : phase;
+
+                    // increment counters
+                    envTotalPods++;
+                    globalTotalPods++;
+
+                    envPhaseCount[finalPhase] =
+                      (envPhaseCount[finalPhase] || 0) + 1;
+
+                    globalPhaseCount[finalPhase] =
+                      (globalPhaseCount[finalPhase] || 0) + 1;
+
+                    return {
+                      name: pod.metadata?.name,
+                      namespace: pod.metadata?.namespace,
+                      phase: finalPhase,
+                      hostIP: pod.status?.hostIP,
+                      podIP: pod.status?.podIP,
+                      containers:
+                        pod?.status?.containerStatuses?.map((c) => ({
+                          name: c.name,
+                          ready: c.ready,
+                          restartCount: c.restartCount,
+                          image: c.image,
+                        })) || [],
+                      createdAt: pod.metadata?.creationTimestamp,
+                    };
+                  });
+
+                  return {
+                    namespace: ns.Name,
+                    total: pods.length,
+                    pods,
+                  };
+                } catch (err) {
+                  console.error(
+                    `Failed pods for ${env.Name}/${ns.Name}:`,
+                    err.message,
+                  );
+
+                  return {
+                    namespace: ns.Name,
+                    total: 0,
+                    pods: [],
+                  };
+                }
+              }),
             ),
-            creationTimestamp: pod.metadata.creationTimestamp,
-          };
-        });
+          );
 
-        return {
-          namespace,
-          total: pods.length,
-          pods: pods.length === 0 ? 0 : pods,
-        };
-      })
+          const sortedNamespaces = namespaceResults.sort((a, b) =>
+            a.namespace.localeCompare(b.namespace),
+          );
+
+          return {
+            environment: {
+              id: env.Id,
+              name: env.Name,
+            },
+            total: envTotalPods,
+            phases: envPhaseCount,
+            namespaces: sortedNamespaces,
+          };
+        } catch (err) {
+          console.error(
+            `Failed fetching pods for env ${env.Name}:`,
+            err.message,
+          );
+
+          return {
+            environment: {
+              id: env.Id,
+              name: env.Name,
+            },
+            total: 0,
+            phases: { ...globalPhaseTemplate },
+            namespaces: [],
+          };
+        }
+      }),
     );
 
-    const sortedResults = results.sort((a, b) => {
-      return a.namespace.localeCompare(b.namespace);
-    });
+    const sorted = results.sort((a, b) =>
+      a.environment.name.localeCompare(b.environment.name),
+    );
 
     res.status(200).send({
       status: "Success",
       data: {
         total: {
-          all: totalPods,
-          byPhase: phaseCount,
+          all: globalTotalPods,
+          byPhase: globalPhaseCount,
         },
-        lists: sortedResults,
+        environments: sorted,
       },
     });
   } catch (error) {
     res.status(400).send({
       status: "Failed",
       message: error.message,
-      error: error.response ? error.response.data : error,
     });
   }
 };
 
 exports.getNodeMetrics = async (req, res) => {
-  function convertNanocoresToCores(nanocores) {
-    const val = parseFloat(nanocores.replace("n", ""));
-    return parseFloat((val / 1_000_000_000).toFixed(4));
-  }
-
-  function convertKiBToBytes(kib) {
-    return kib * 1024;
-  }
-
   try {
-    const { data: nodeData } = await axios.get(
-      `${urlAPI}/endpoints/8/kubernetes/api/v1/nodes`,
-      {
-        headers: header,
-        httpsAgent: agent,
-      }
-    );
+    const envs = await getKubeEnvironments();
 
-    const nodes = await Promise.all(
-      nodeData.items.map(async (node) => {
-        const {
-          metadata: { name, creationTimestamp },
-          status: {
-            capacity: { cpu, memory, pods },
-            allocatable: { "nvidia.com/gpu": gpu },
-            conditions,
-            addresses,
-            nodeInfo: {
-              osImage,
-              kernelVersion,
-              containerRuntimeVersion,
-              kubeletVersion,
-            },
-          },
-        } = node;
-
-        const { data: metricData } = await axios.get(
-          `${urlAPI}/kubernetes/8/metrics/nodes/${name}`,
-          {
-            headers: header,
-            httpsAgent: agent,
+    const results = await Promise.all(
+      envs.map(async (env) => {
+        try {
+          // 🚨 skip if metrics not enabled
+          if (!env?.Kubernetes?.Configuration?.UseServerMetrics) {
+            return {
+              environment: { id: env.Id, name: env.Name },
+              total: 0,
+              nodes: [],
+              skipped: true,
+            };
           }
-        );
 
-        const readyCondition = conditions.find(
-          (condition) => condition.type === "Ready"
-        );
+          // 1. get nodes
+          const { data: nodeData } = await api.get(
+            `/endpoints/${env.Id}/kubernetes/api/v1/nodes`,
+          );
 
-        const internalIP = addresses.find(
-          (addr) => addr.type === "InternalIP"
-        ).address;
+          const items = nodeData?.items || [];
 
-        const convert = {
-          cpuCoreTotal: parseInt(cpu),
-          cpuCoreUsage: convertNanocoresToCores(metricData.usage.cpu),
-          cpuCoreAvailable:
-            parseInt(cpu) - convertNanocoresToCores(metricData.usage.cpu),
-          cpuUsageInPercent: parseFloat(
-            (
-              (convertNanocoresToCores(metricData.usage.cpu) / parseInt(cpu)) *
-              100
-            ).toFixed(2)
-          ),
-          cpuAvailableInPercent: parseFloat(
-            (
-              ((parseInt(cpu) - convertNanocoresToCores(metricData.usage.cpu)) /
-                parseInt(cpu)) *
-              100
-            ).toFixed(2)
-          ),
-          memoryTotal: convertKiBToBytes(parseInt(memory.replace("Ki", ""))),
-          memoryUsage: convertKiBToBytes(
-            parseInt(metricData.usage.memory.replace("Ki", ""))
-          ),
-          memoryAvailable:
-            convertKiBToBytes(parseInt(memory.replace("Ki", ""))) -
-            convertKiBToBytes(
-              parseInt(metricData.usage.memory.replace("Ki", ""))
+          const nodes = await Promise.all(
+            items.map((node) =>
+              limit(async () => {
+                try {
+                  const name = node.metadata?.name;
+
+                  // 2. get metrics per node
+                  const { data: metric } = await api.get(
+                    `/kubernetes/${env.Id}/metrics/nodes/${name}`,
+                  );
+
+                  const cpuTotal = parseInt(node.status?.capacity?.cpu || 0);
+
+                  const cpuUsage = convertNanocoresToCores(metric?.usage?.cpu);
+
+                  const memoryTotal = convertMemoryToBytes(
+                    node.status?.capacity?.memory,
+                  );
+
+                  const memoryUsage = convertMemoryToBytes(
+                    metric?.usage?.memory,
+                  );
+
+                  const memoryAvailable = memoryTotal - memoryUsage;
+
+                  const memoryUsagePercent = parseFloat(
+                    ((memoryUsage / memoryTotal) * 100 || 0).toFixed(2),
+                  );
+
+                  const memoryAvailablePercent = parseFloat(
+                    ((memoryAvailable / memoryTotal) * 100 || 0).toFixed(2),
+                  );
+
+                  const memory = {
+                    totalBytes: memoryTotal,
+                    usedBytes: memoryUsage,
+                    availableBytes: memoryAvailable,
+
+                    // ✅ human readable
+                    totalInGB: bytesToGB(memoryTotal),
+                    usedInGB: bytesToGB(memoryUsage),
+                    availableInGB: bytesToGB(memoryAvailable),
+
+                    usagePercent: memoryUsagePercent,
+                    availablePercent: memoryAvailablePercent,
+                  };
+
+                  const readyCondition = node.status?.conditions?.find(
+                    (c) => c.type === "Ready",
+                  );
+
+                  const internalIP = node.status?.addresses?.find(
+                    (a) => a.type === "InternalIP",
+                  )?.address;
+
+                  return {
+                    name,
+                    internalIP,
+                    ready:
+                      readyCondition?.status === "True" ? "Ready" : "Not Ready",
+
+                    osImage: node.status?.nodeInfo?.osImage,
+                    kernelVersion: node.status?.nodeInfo?.kernelVersion,
+                    containerRuntime:
+                      node.status?.nodeInfo?.containerRuntimeVersion,
+                    kubeletVersion: node.status?.nodeInfo?.kubeletVersion,
+
+                    gpu: node.status?.allocatable?.["nvidia.com/gpu"] || 0,
+
+                    createdAt: node.metadata?.creationTimestamp,
+
+                    usage: {
+                      cpu: {
+                        total: cpuTotal,
+                        used: cpuUsage,
+                        available: cpuTotal - cpuUsage,
+                        usagePercent: parseFloat(
+                          ((cpuUsage / cpuTotal) * 100 || 0).toFixed(2),
+                        ),
+                      },
+                      memory: memory,
+                    },
+                  };
+                } catch (err) {
+                  console.error(
+                    `Metrics failed for node ${node.metadata?.name}:`,
+                    err.message,
+                  );
+                  return null;
+                }
+              }),
             ),
-          memoryUsageInPercent: parseFloat(
-            (
-              (convertKiBToBytes(
-                parseInt(metricData.usage.memory.replace("Ki", ""))
-              ) /
-                convertKiBToBytes(parseInt(memory.replace("Ki", "")))) *
-              100
-            ).toFixed(2)
-          ),
-          memoryAvailableInPercent: parseFloat(
-            (
-              ((convertKiBToBytes(parseInt(memory.replace("Ki", ""))) -
-                convertKiBToBytes(
-                  parseInt(metricData.usage.memory.replace("Ki", ""))
-                )) /
-                convertKiBToBytes(parseInt(memory.replace("Ki", "")))) *
-              100
-            ).toFixed(2)
-          ),
-        };
+          );
 
-        return {
-          name,
-          pods,
-          gpu,
-          ready: readyCondition.status === "True" ? "Ready" : "Not Ready",
-          osImage,
-          kernelVersion,
-          containerRuntimeVersion,
-          kubeletVersion,
-          internalIP,
-          createdAt: creationTimestamp,
-          usage: convert,
-        };
-      })
+          const validNodes = nodes.filter(Boolean);
+
+          return {
+            environment: {
+              id: env.Id,
+              name: env.Name,
+            },
+            total: validNodes.length,
+            nodes: validNodes.sort((a, b) => a.name.localeCompare(b.name)),
+          };
+        } catch (err) {
+          console.error(
+            `Failed node metrics for env ${env.Name}:`,
+            err.message,
+          );
+
+          return {
+            environment: {
+              id: env.Id,
+              name: env.Name,
+            },
+            total: 0,
+            nodes: [],
+          };
+        }
+      }),
     );
+
+    const sorted = results.sort((a, b) =>
+      a.environment.name.localeCompare(b.environment.name),
+    );
+
+    const grandTotal = sorted.reduce((acc, curr) => acc + curr.total, 0);
 
     res.status(200).send({
       status: "Success",
       data: {
-        total: nodes.length,
-        nodes,
+        total: grandTotal,
+        environments: sorted,
       },
     });
   } catch (error) {

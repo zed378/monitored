@@ -12,11 +12,11 @@ const getToken = async () => {
       urlAPI + "/auth",
       {
         username: "admin",
-        password: "celHJvKW4Sj49",
+        password: "1qaz2wsx3edc",
       },
       {
         httpsAgent: agent,
-      }
+      },
     );
 
     return response.data.jwt;
