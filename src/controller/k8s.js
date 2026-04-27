@@ -18,6 +18,10 @@ const api = axios.create({
 
 let cache = null;
 let lastFetch = 0;
+let servicesCache = null;
+let servicesLastFetch = 0;
+let nodeCache = null;
+let nodeLastFetch = 0;
 const CACHE_TTL = 30 * 1000;
 
 const getKubeEnvironments = async () => {
@@ -30,25 +34,12 @@ const getKubeEnvironments = async () => {
   );
 };
 
-const convertNanocoresToCores = (nano) => {
-  if (!nano) return 0;
-  return parseFloat((parseInt(nano.replace('n', '')) / 1e9).toFixed(4));
-};
+const toCores = (nano) =>
+  parseFloat((parseFloat(nano || 0) / 1_000_000_000).toFixed(4));
 
-const convertMemoryToBytes = (val) => {
-  if (!val) return 0;
+const kiToBytes = (val) => parseInt(val?.replace('Ki', '') || 0) * 1024;
 
-  const num = parseInt(val);
-  if (val.endsWith('Ki')) return num * 1024;
-  if (val.endsWith('Mi')) return num * 1024 * 1024;
-  if (val.endsWith('Gi')) return num * 1024 * 1024 * 1024;
-
-  return num; // fallback
-};
-
-const bytesToGB = (bytes) => {
-  return parseFloat((bytes / 1024 ** 3).toFixed(2));
-};
+const bytesToGB = (bytes) => parseFloat((bytes / 1024 ** 3).toFixed(2));
 
 exports.getEnvironment = async (req, res) => {
   try {
@@ -142,65 +133,62 @@ exports.getAllNS = async (req, res) => {
 
 exports.getServices = async (req, res) => {
   try {
+    const now = Date.now();
+
+    if (servicesCache && now - servicesLastFetch < CACHE_TTL) {
+      return res.status(200).send(servicesCache);
+    }
+
     const envs = await getKubeEnvironments();
 
-    const results = await Promise.all(
+    let globalTotal = 0;
+
+    const environments = await Promise.all(
       envs.map(async (env) => {
         try {
-          // 1. get namespaces first
-          const { data: namespacesData } = await api.get(
-            `/kubernetes/${env.Id}/namespaces`,
+          const { data } = await api.get(
+            `/endpoints/${env.Id}/kubernetes/api/v1/services`,
           );
 
-          const namespaces = namespacesData || [];
+          const items = data?.items || [];
 
-          // 2. fetch services per namespace (with limit)
-          const namespaceResults = await Promise.all(
-            namespaces.map((ns) =>
-              limit(async () => {
-                try {
-                  const { data } = await api.get(
-                    `/kubernetes/${env.Id}/namespaces/${ns.Name}/services?lookupapplications=true`,
-                  );
+          let envTotal = 0;
 
-                  const services = (data || []).map((item) => ({
-                    name: item.Name,
-                    type: item.Type,
-                    ports: item.Ports || [],
-                    applications: item.Applications || [],
-                    createdAt: item.CreationTimestamp,
-                  }));
+          const namespaceMap = {};
 
-                  return {
-                    namespace: ns.Name,
-                    total: services.length,
-                    services,
-                  };
-                } catch (err) {
-                  console.error(
-                    `Failed services for ${env.Name}/${ns.Name}:`,
-                    err.message,
-                  );
+          items.forEach((svc) => {
+            const namespace = svc.metadata?.namespace || 'unknown';
 
-                  return {
-                    namespace: ns.Name,
-                    total: 0,
-                    services: [],
-                  };
-                }
-              }),
-            ),
-          );
+            if (!namespaceMap[namespace]) {
+              namespaceMap[namespace] = {
+                namespace,
+                total: 0,
+                services: [],
+              };
+            }
 
-          // sort namespaces
-          const sortedNamespaces = namespaceResults.sort((a, b) =>
+            envTotal++;
+            globalTotal++;
+
+            namespaceMap[namespace].total++;
+
+            namespaceMap[namespace].services.push({
+              name: svc.metadata?.name,
+              type: svc.spec?.type,
+              clusterIP: svc.spec?.clusterIP,
+              externalIP: svc.status?.loadBalancer?.ingress?.[0]?.ip || null,
+              ports:
+                svc.spec?.ports?.map((p) => ({
+                  port: p.port,
+                  targetPort: p.targetPort,
+                  protocol: p.protocol,
+                })) || [],
+              createdAt: svc.metadata?.creationTimestamp,
+            });
+          });
+
+          const namespaces = Object.values(namespaceMap).sort((a, b) =>
             a.namespace.localeCompare(b.namespace),
-          );
-
-          // total services per environment
-          const totalServices = sortedNamespaces.reduce(
-            (acc, curr) => acc + curr.total,
-            0,
           );
 
           return {
@@ -208,12 +196,12 @@ exports.getServices = async (req, res) => {
               id: env.Id,
               name: env.Name,
             },
-            total: totalServices,
-            namespaces: sortedNamespaces,
+            total: envTotal,
+            namespaces,
           };
         } catch (err) {
           console.error(
-            `Failed fetching namespaces for env ${env.Name}:`,
+            `Failed fetching services for env ${env.Name}:`,
             err.message,
           );
 
@@ -229,21 +217,22 @@ exports.getServices = async (req, res) => {
       }),
     );
 
-    // sort environments
-    const sorted = results.sort((a, b) =>
+    const sorted = environments.sort((a, b) =>
       a.environment.name.localeCompare(b.environment.name),
     );
 
-    // grand total
-    const grandTotal = sorted.reduce((acc, curr) => acc + curr.total, 0);
-
-    res.status(200).send({
+    const response = {
       status: 'Success',
       data: {
-        total: grandTotal,
+        total: globalTotal,
         environments: sorted,
       },
-    });
+    };
+
+    servicesCache = response;
+    servicesLastFetch = now;
+
+    res.status(200).send(response);
   } catch (error) {
     res.status(400).send({
       status: 'Failed',
@@ -387,135 +376,105 @@ exports.getPodsMetrics = async (req, res) => {
 
 exports.getNodeMetrics = async (req, res) => {
   try {
+    const now = Date.now();
+
+    if (nodeCache && now - nodeLastFetch < CACHE_TTL) {
+      return res.status(200).send(nodeCache);
+    }
+
     const envs = await getKubeEnvironments();
 
-    const results = await Promise.all(
+    const environments = await Promise.all(
       envs.map(async (env) => {
         try {
-          // 🚨 skip if metrics not enabled
-          if (!env?.Kubernetes?.Configuration?.UseServerMetrics) {
+          const [nodeRes, metricRes] = await Promise.all([
+            api.get(`/endpoints/${env.Id}/kubernetes/api/v1/nodes`),
+            api.get(`/kubernetes/${env.Id}/metrics/nodes`),
+          ]);
+
+          const nodes = nodeRes.data?.items || [];
+          const metrics = metricRes.data?.items || [];
+
+          const metricMap = {};
+          metrics.forEach((m) => {
+            metricMap[m.metadata.name] = m;
+          });
+
+          const results = nodes.map((node) => {
+            const name = node.metadata?.name;
+            const metric = metricMap[name];
+
+            const cpuTotal = parseInt(node.status?.capacity?.cpu || 0);
+            const memTotalBytes = kiToBytes(node.status?.capacity?.memory);
+
+            const cpuUsed = toCores(metric?.usage?.cpu || '0n');
+            const memUsedBytes = kiToBytes(metric?.usage?.memory);
+
+            const cpuAvailable = cpuTotal - cpuUsed;
+            const memAvailableBytes = memTotalBytes - memUsedBytes;
+
+            const cpuUsagePct = cpuTotal
+              ? parseFloat(((cpuUsed / cpuTotal) * 100).toFixed(2))
+              : 0;
+
+            const memUsagePct = memTotalBytes
+              ? parseFloat(((memUsedBytes / memTotalBytes) * 100).toFixed(2))
+              : 0;
+
+            const readyCondition = node.status?.conditions?.find(
+              (c) => c.type === 'Ready',
+            );
+
+            const internalIP = node.status?.addresses?.find(
+              (a) => a.type === 'InternalIP',
+            )?.address;
+
             return {
-              environment: { id: env.Id, name: env.Name },
-              total: 0,
-              nodes: [],
-              skipped: true,
+              name,
+              internalIP,
+              status: readyCondition?.status === 'True' ? 'Ready' : 'Not Ready',
+
+              cpu: {
+                total: cpuTotal,
+                used: cpuUsed,
+                available: cpuAvailable,
+                usagePercent: cpuUsagePct,
+              },
+
+              memory: {
+                totalBytes: memTotalBytes,
+                usedBytes: memUsedBytes,
+                availableBytes: memAvailableBytes,
+
+                totalInGB: bytesToGB(memTotalBytes),
+                usedInGB: bytesToGB(memUsedBytes),
+                availableInGB: bytesToGB(memAvailableBytes),
+
+                usagePercent: memUsagePct,
+              },
+
+              system: {
+                os: node.status?.nodeInfo?.osImage,
+                kernel: node.status?.nodeInfo?.kernelVersion,
+                runtime: node.status?.nodeInfo?.containerRuntimeVersion,
+                kubelet: node.status?.nodeInfo?.kubeletVersion,
+              },
+
+              createdAt: node.metadata?.creationTimestamp,
             };
-          }
-
-          // 1. get nodes
-          const { data: nodeData } = await api.get(
-            `/endpoints/${env.Id}/kubernetes/api/v1/nodes`,
-          );
-
-          const items = nodeData?.items || [];
-
-          const nodes = await Promise.all(
-            items.map((node) =>
-              limit(async () => {
-                try {
-                  const name = node.metadata?.name;
-
-                  // 2. get metrics per node
-                  const { data: metric } = await api.get(
-                    `/kubernetes/${env.Id}/metrics/nodes/${name}`,
-                  );
-
-                  const cpuTotal = parseInt(node.status?.capacity?.cpu || 0);
-
-                  const cpuUsage = convertNanocoresToCores(metric?.usage?.cpu);
-
-                  const memoryTotal = convertMemoryToBytes(
-                    node.status?.capacity?.memory,
-                  );
-
-                  const memoryUsage = convertMemoryToBytes(
-                    metric?.usage?.memory,
-                  );
-
-                  const memoryAvailable = memoryTotal - memoryUsage;
-
-                  const memoryUsagePercent = parseFloat(
-                    ((memoryUsage / memoryTotal) * 100 || 0).toFixed(2),
-                  );
-
-                  const memoryAvailablePercent = parseFloat(
-                    ((memoryAvailable / memoryTotal) * 100 || 0).toFixed(2),
-                  );
-
-                  const memory = {
-                    totalBytes: memoryTotal,
-                    usedBytes: memoryUsage,
-                    availableBytes: memoryAvailable,
-
-                    // ✅ human readable
-                    totalInGB: bytesToGB(memoryTotal),
-                    usedInGB: bytesToGB(memoryUsage),
-                    availableInGB: bytesToGB(memoryAvailable),
-
-                    usagePercent: memoryUsagePercent,
-                    availablePercent: memoryAvailablePercent,
-                  };
-
-                  const readyCondition = node.status?.conditions?.find(
-                    (c) => c.type === 'Ready',
-                  );
-
-                  const internalIP = node.status?.addresses?.find(
-                    (a) => a.type === 'InternalIP',
-                  )?.address;
-
-                  return {
-                    name,
-                    internalIP,
-                    ready:
-                      readyCondition?.status === 'True' ? 'Ready' : 'Not Ready',
-
-                    osImage: node.status?.nodeInfo?.osImage,
-                    kernelVersion: node.status?.nodeInfo?.kernelVersion,
-                    containerRuntime:
-                      node.status?.nodeInfo?.containerRuntimeVersion,
-                    kubeletVersion: node.status?.nodeInfo?.kubeletVersion,
-
-                    gpu: node.status?.allocatable?.['nvidia.com/gpu'] || 0,
-
-                    createdAt: node.metadata?.creationTimestamp,
-
-                    usage: {
-                      cpu: {
-                        total: cpuTotal,
-                        used: cpuUsage,
-                        available: cpuTotal - cpuUsage,
-                        usagePercent: parseFloat(
-                          ((cpuUsage / cpuTotal) * 100 || 0).toFixed(2),
-                        ),
-                      },
-                      memory: memory,
-                    },
-                  };
-                } catch (err) {
-                  console.error(
-                    `Metrics failed for node ${node.metadata?.name}:`,
-                    err.message,
-                  );
-                  return null;
-                }
-              }),
-            ),
-          );
-
-          const validNodes = nodes.filter(Boolean);
+          });
 
           return {
             environment: {
               id: env.Id,
               name: env.Name,
             },
-            total: validNodes.length,
-            nodes: validNodes.sort((a, b) => a.name.localeCompare(b.name)),
+            total: results.length,
+            nodes: results,
           };
         } catch (err) {
           console.error(
-            `Failed node metrics for env ${env.Name}:`,
+            `Failed fetching node metrics for ${env.Name}:`,
             err.message,
           );
 
@@ -531,19 +490,21 @@ exports.getNodeMetrics = async (req, res) => {
       }),
     );
 
-    const sorted = results.sort((a, b) =>
+    const sorted = environments.sort((a, b) =>
       a.environment.name.localeCompare(b.environment.name),
     );
 
-    const grandTotal = sorted.reduce((acc, curr) => acc + curr.total, 0);
-
-    res.status(200).send({
+    const response = {
       status: 'Success',
       data: {
-        total: grandTotal,
         environments: sorted,
       },
-    });
+    };
+
+    nodeCache = response;
+    nodeLastFetch = now;
+
+    res.status(200).send(response);
   } catch (error) {
     res.status(400).send({
       status: 'Failed',
