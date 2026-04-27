@@ -18,6 +18,8 @@ ENV PORT=6789
 
 # Expose port
 EXPOSE 6789
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:6789/health/check || exit 1
 
 # Run app
 CMD ["node", "index.js"]

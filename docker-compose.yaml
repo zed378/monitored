@@ -14,3 +14,8 @@ services:
       - PTOKEN=your_portainer_token
       - PURL=https://your_portainer_url:9443/api
     restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:6789/health/check" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3

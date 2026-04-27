@@ -27,9 +27,11 @@ app.use(xss());
 
 // Routes
 const k8sRoutes = require('./src/routes/k8s');
+const healthRoutes = require('./src/routes/healtcheck');
 
 // Endpoint
 app.use('/k8s', k8sRoutes);
+app.use('/health', healthRoutes);
 
 app.get('/', (req, res) => {
   res.status(200).send({
