@@ -12,4 +12,4 @@ services:
       - MAIL_PASS=mail_password
       - PTOKEN='your_portainer_token'
       - PURL=https://your_portainer_url:9443/api
-    restart: unless-stop
+    restart: unless-stopped
