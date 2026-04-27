@@ -1,19 +1,19 @@
 # 🚀 Kubernetes Multi-Cluster Monitoring (Portainer-Based)
 
 A lightweight Node.js service to monitor Kubernetes clusters via Portainer API.
-It aggregates **namespaces, services, pods, and node metrics** across multiple environments and sends **email alerts** for problematic pods.
+It aggregates **namespaces, services, pods, and node metrics** across multiple environments and sends **email alerts only when issues are detected**.
 
 ---
 
 # 📌 Features
 
-- 🌐 Multi-cluster support (via Portainer)
+- 🌐 Multi-cluster monitoring (via Portainer)
 - 📦 Namespaces, Services, Pods, Node Metrics
 - 📊 Aggregated metrics per environment
-- 🚨 Email alerts for non-running pods
+- 🚨 Email alerts for **non-running pods only**
+- 🧠 Smart filtering (ignores healthy pods)
 - ⚡ Concurrency-controlled API calls
-- 🛡️ Safe for large clusters
-- 🐳 Docker-ready
+- 🐳 Docker-ready deployment
 
 ---
 
@@ -30,22 +30,20 @@ Before running this service, make sure you have:
 
 ### 2. Portainer Agent in Kubernetes
 
-- Portainer Agent must already be deployed in your Kubernetes cluster
+- Portainer Agent must be deployed in your Kubernetes clusters
 
 ---
 
-### 3. Kubernetes Environment Added to Portainer
+### 3. Kubernetes Environments Added
 
-- Your clusters must be registered as environments in Portainer
+- All clusters must be registered in Portainer
 
 ---
 
 ### 4. Portainer API Token
 
-- Generate an API token from Portainer:
-  - Go to **My Account → Access Tokens**
-  - Create a new token
-  - Save it securely
+- Go to: **My Account → Access Tokens**
+- Generate token and keep it secure
 
 ---
 
@@ -59,6 +57,9 @@ PORT=6789
 # Mail configuration
 MAIL_USER=your_email@mail.com
 MAIL_PASS=your_email_password
+
+# Multiple recipients (comma-separated, NO quotes)
+MAIL_RECIPIENTS=tech.infra@bodha.co.id,zawawi@bodha.co.id,bimantara@bodha.co.id,dhohirpradana@bodha.co.id
 
 # Portainer API
 PTOKEN=your_portainer_api_token
@@ -79,7 +80,7 @@ services:
     image: zed378/monitoring:latest
     container_name: monitoring
     ports:
-      - "6789:6789"
+      - '6789:6789'
     env_file:
       - .env
     restart: unless-stopped
@@ -131,7 +132,7 @@ Includes:
 
 - total pods
 - phase distribution
-- CrashLoopBackOff detection
+- problematic pods detection
 
 ---
 
@@ -149,66 +150,57 @@ Includes:
 
 ---
 
-# 📊 Example Response (Pods)
+# 🚨 Alerting Logic (IMPORTANT)
 
-```json
-{
-  "total": {
-    "all": 120,
-    "byPhase": {
-      "Running": 90,
-      "Pending": 10,
-      "Failed": 5,
-      "CrashLoopBackOff": 3
-    }
-  },
-  "environments": [
-    {
-      "environment": { "name": "k8s-dev" },
-      "total": 70
-    }
-  ]
-}
-```
+Emails are sent **ONLY when problematic pods exist**.
 
----
+### ✅ Email WILL be sent if:
 
-# 🚨 Email Alert System
-
-A cron job runs every **10 minutes** to detect problematic pods:
-
-### Trigger Conditions
-
-- Pod NOT in:
+- Pod status is NOT:
   - `Running`
   - `Succeeded`
 
-- Includes:
-  - `Pending`
-  - `Failed`
-  - `CrashLoopBackOff`
+Examples:
+
+- `Pending`
+- `Failed`
+- `CrashLoopBackOff`
+- `Unknown`
 
 ---
 
-### Email Behavior
+### ❌ Email will NOT be sent if:
 
-- Sends **single aggregated email**
-- Includes:
-  - pod name
-  - namespace
-  - environment
-  - status
-  - host IP
+- All pods are healthy (`Running` / `Succeeded`)
 
 ---
 
-# ⏱️ Cron Schedule
+### 🔁 Check Interval
 
 ```bash
 */10 * * * *
 ```
 
-Every 10 minutes.
+Every 10 minutes via cron.
+
+---
+
+# 📧 Email Behavior
+
+- Sends **ONE aggregated email**
+- Includes all problematic pods
+- Supports **multiple recipients**
+- Highlights:
+  - 🔴 Critical → Failed / CrashLoopBackOff
+  - 🟡 Warning → others
+
+---
+
+# 📊 Email Preview
+
+| Environment | Pod     | Status | Namespace | Host     |
+| ----------- | ------- | ------ | --------- | -------- |
+| k8s-dev     | api-xyz | Failed | default   | 10.x.x.x |
 
 ---
 
@@ -238,8 +230,8 @@ REST API + Email Alerts
 # 🔒 Security Notes
 
 - Never commit `.env`
-- Use secrets manager in production
-- Avoid exposing Portainer API publicly
+- Keep `PTOKEN` private
+- Use secure SMTP credentials
 
 ---
 
@@ -269,9 +261,10 @@ OK
 # 🚀 Future Improvements
 
 - Redis caching
-- WebSocket real-time metrics
+- Alert deduplication
+- WebSocket live metrics
 - Grafana-style dashboard
-- Kubernetes native deployment (Helm)
+- Kubernetes (Helm) deployment
 
 ---
 

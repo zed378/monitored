@@ -1,19 +1,20 @@
-const axios = require("axios");
-require("dotenv").config();
-const cron = require("node-cron");
+const axios = require('axios');
+require('dotenv').config();
+const cron = require('node-cron');
 
 const mailUser = process.env.MAIL_USER;
 const mailPass = process.env.MAIL_PASS;
+const mailRecipients = process.env.MAIL_RECIPIENTS;
 
-const fs = require("fs");
-const mustache = require("mustache");
-const nodemailer = require("nodemailer");
-const path = require("path");
+const fs = require('fs');
+const mustache = require('mustache');
+const nodemailer = require('nodemailer');
+const path = require('path');
 
-const template = fs.readFileSync(path.join(__dirname, "reports.html"), "utf8");
+const template = fs.readFileSync(path.join(__dirname, 'reports.html'), 'utf8');
 
 const transporter = nodemailer.createTransport({
-  host: "smtp.office365.com",
+  host: 'smtp.office365.com',
   secure: false,
   port: 587,
   tls: {
@@ -27,12 +28,12 @@ const transporter = nodemailer.createTransport({
 
 async function getNonRunningPods() {
   try {
-    const response = await axios.get("http://localhost:6789/k8s/metrics");
+    const response = await axios.get('http://localhost:6789/k8s/metrics');
 
     const envs = response.data?.data?.environments;
 
     if (!Array.isArray(envs)) {
-      throw new Error("Unexpected data format");
+      throw new Error('Unexpected data format');
     }
 
     const problematicPods = [];
@@ -43,14 +44,14 @@ async function getNonRunningPods() {
 
         if (
           !Array.isArray(ns.pods) ||
-          namespace.toLowerCase().includes("kube") ||
-          namespace.toLowerCase().includes("cert-manager")
+          namespace.toLowerCase().includes('kube') ||
+          namespace.toLowerCase().includes('cert-manager')
         ) {
           continue;
         }
 
         const nonRunning = ns.pods.filter(
-          (pod) => pod.phase !== "Running" && pod.phase !== "Succeeded",
+          (pod) => pod.phase !== 'Running' && pod.phase !== 'Succeeded',
         );
 
         problematicPods.push(
@@ -64,47 +65,61 @@ async function getNonRunningPods() {
 
     return problematicPods;
   } catch (err) {
-    console.error("Error fetching metrics:", err.message);
+    console.error('Error fetching metrics:', err.message);
     return [];
   }
 }
 
 async function sendMail() {
   try {
-    const pods = await getNonRunningPods();
+    if (!mailRecipients) {
+      throw new Error('MAIL_RECIPIENTS is not defined');
+    }
 
-    if (pods.length === 0) {
-      console.log("✅ No problematic pods found.");
+    const pods = (await getNonRunningPods()).map((pod) => ({
+      ...pod,
+      isCritical: pod.phase === 'Failed' || pod.phase === 'CrashLoopBackOff',
+    }));
+
+    if (!Array.isArray(pods) || pods.length === 0) {
+      console.log('✅ No problematic pods found. Skipping email.');
       return;
     }
 
+    const recipients = mailRecipients
+      .split(',')
+      .map((email) => email.trim())
+      .filter(Boolean);
+
     const htmlContent = mustache.render(template, {
-      pods, // <-- pass array instead of single pod
+      pods,
+      total: pods.length,
     });
 
     const mailOptions = {
       from: `"BPN Alert" <${mailUser}>`,
-      to: "tech.infra@bodha.co.id",
-      subject: `🚨 ${pods.length} Problematic Pods Detected`,
+      to: recipients,
+      subject: `🚨 ${pods.length} Problematic Pod(s) Detected`,
       html: htmlContent,
     };
 
     const info = await transporter.sendMail(mailOptions);
 
-    console.log(`📨 Alert sent. MessageId: ${info.messageId}`);
+    console.log(`📨 Alert sent to ${recipients.join(', ')}`);
+    console.log(`MessageId: ${info.messageId}`);
   } catch (err) {
-    console.error("❌ Error sending emails:", err.message);
+    console.error('❌ Error sending emails:', err.message);
   }
 }
 
 function scheduledCheckService() {
-  console.log("Cron started!");
+  console.log('Cron started!');
 
-  cron.schedule("*/10 * * * *", async () => {
+  cron.schedule('*/10 * * * *', async () => {
     try {
-      sendMail();
+      await sendMail();
     } catch (error) {
-      console.error("Error during sending alert request:", error.message);
+      console.error('Error during sending alert request:', error.message);
     }
   });
 }

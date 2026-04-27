@@ -10,6 +10,7 @@ services:
       - PORT=6789
       - MAIL_USER=user@mail.com
       - MAIL_PASS=mail_password
+      - MAIL_RECIPIENTS=allyourrecipient # use comma to add more than one email
       - PTOKEN=your_portainer_token
       - PURL=https://your_portainer_url:9443/api
     restart: unless-stopped
