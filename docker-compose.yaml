@@ -10,6 +10,6 @@ services:
       - PORT=6789
       - MAIL_USER=user@mail.com
       - MAIL_PASS=mail_password
-      - PTOKEN='your_portainer_token'
+      - PTOKEN=your_portainer_token
       - PURL=https://your_portainer_url:9443/api
     restart: unless-stopped
