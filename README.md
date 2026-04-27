@@ -59,7 +59,7 @@ MAIL_USER=your_email@mail.com
 MAIL_PASS=your_email_password
 
 # Multiple recipients (comma-separated, NO quotes)
-MAIL_RECIPIENTS=tech.infra@bodha.co.id,zawawi@bodha.co.id,bimantara@bodha.co.id,dhohirpradana@bodha.co.id
+MAIL_RECIPIENTS=kembedt@gmail.com,m.zawawi1996@gmail.com,zed3781@gmail.com
 
 # Portainer API
 PTOKEN=your_portainer_api_token
