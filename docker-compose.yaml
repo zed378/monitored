@@ -15,6 +15,8 @@ services:
       - MAIL_RECIPIENTS=allyourrecipient # use comma to add more than one email
       - PTOKEN=your_portainer_token
       - PURL=https://your_portainer_url:9443/api
+      - PUSER=yourportaineruser
+      - PPASS=yourportainerpassword
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:6789/health/check"]

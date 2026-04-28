@@ -5,6 +5,8 @@ const mailPass = process.env.MAIL_PASS;
 const mailHost = process.env.MAIL_HOST;
 const mailPort = process.env.MAIL_PORT;
 const mailRecipients = process.env.MAIL_RECIPIENTS;
+const portUser = process.env.PUSER;
+const portPass = process.env.PPASS;
 
 module.exports = {
   urlAPI,
@@ -14,4 +16,6 @@ module.exports = {
   mailRecipients,
   mailHost,
   mailPort,
+  portPass,
+  portUser,
 };

@@ -1,5 +1,5 @@
 const axios = require("axios");
-const { API_KEY, urlAPI } = require("./env");
+const { API_KEY, urlAPI, portPass, portUser } = require("./env");
 const https = require("https");
 
 const getToken = async () => {
@@ -11,8 +11,8 @@ const getToken = async () => {
     const response = await axios.post(
       urlAPI + "/auth",
       {
-        username: "admin",
-        password: "1qaz2wsx3edc",
+        username: portUser,
+        password: portPass,
       },
       {
         httpsAgent: agent,
