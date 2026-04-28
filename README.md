@@ -1,7 +1,7 @@
 # 🚀 Kubernetes Multi-Cluster Monitoring (Portainer-Based)
 
-A lightweight Node.js service to monitor Kubernetes clusters via Portainer API.
-It aggregates **namespaces, services, pods, and node metrics** across multiple environments and sends **email alerts only when issues are detected**.
+A lightweight Node.js service to monitor Kubernetes clusters via Portainer API.  
+It aggregates **namespaces, services, pods, and node metrics** across multiple environments and sends **alerts only when issues are detected**.
 
 ---
 
@@ -12,7 +12,8 @@ It aggregates **namespaces, services, pods, and node metrics** across multiple e
 - 📊 Aggregated metrics per environment
 - 🚨 Email alerts for **non-running pods only**
 - 🧠 Smart filtering (ignores healthy pods)
-- ⚡ Concurrency-controlled API calls
+- ⚡ Optimized API (fast, minimal calls)
+- ❤️ Built-in healthcheck
 - 🐳 Docker-ready deployment
 
 ---
@@ -54,43 +55,69 @@ Create a `.env` file:
 ```env
 PORT=6789
 
-# Mail configuration
+# 📧 Mail Configuration
 MAIL_USER=your_email@mail.com
 MAIL_PASS=your_email_password
+MAIL_HOST=your_email_host
+MAIL_PORT=your_email_port
 
 # Multiple recipients (comma-separated, NO quotes)
-MAIL_RECIPIENTS=kembedt@gmail.com,m.zawawi1996@gmail.com,zed3781@gmail.com
+MAIL_RECIPIENTS=tech@company.com,devops@company.com
 
-# Portainer API
+# 🔐 Portainer API (Recommended)
 PTOKEN=your_portainer_api_token
 PURL=https://your-portainer-url:9443/api
+
+# (Optional) Fallback login if token not used
+PUSER=your_portainer_username
+PPASS=your_portainer_password
 ```
 
 ---
 
 # 🐳 Running with Docker
 
-### docker-compose.yml
+create `docker-compose.yml` file:
 
 ```yaml
 name: monitor-resources
 
 services:
   monitoring-k8s:
-    image: zed378/monitoring:latest
     container_name: monitoring
+    image: zed378/monitoring:latest
     ports:
-      - '6789:6789'
-    env_file:
-      - .env
+      - "6789:6789"
+    environment:
+      - PORT=6789
+
+      # 📧 Email Configuration
+      - MAIL_USER=user@mail.com
+      - MAIL_PASS=mail_password
+      - MAIL_HOST=yourmailhost
+      - MAIL_PORT=yourmailport
+      - MAIL_RECIPIENTS=allyourrecipient # comma separated
+
+      # 🔐 Portainer Configuration
+      - PTOKEN=your_portainer_token
+      - PURL=https://your_portainer_url:9443/api
+
+      # (Optional)
+      - PUSER=yourportaineruser
+      - PPASS=yourportainerpassword
+
     restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:6789/health/check"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 ```
 
----
+## Run:
 
-### Run
-
-```bash
+```code
 docker compose up -d
 ```
 
@@ -104,23 +131,11 @@ docker compose up -d
 GET /k8s/namespaces
 ```
 
-Grouped by environment with totals.
-
----
-
 ## 2. Services
 
 ```
 GET /k8s/services
 ```
-
-Structured by:
-
-```
-environment → namespace → services
-```
-
----
 
 ## 3. Pods Metrics
 
@@ -128,13 +143,11 @@ environment → namespace → services
 GET /k8s/metrics
 ```
 
-Includes:
+**Includes:**
 
 - total pods
 - phase distribution
 - problematic pods detection
-
----
 
 ## 4. Node Metrics
 
@@ -142,7 +155,7 @@ Includes:
 GET /k8s/nodes
 ```
 
-Includes:
+**Includes:**
 
 - CPU usage (cores + %)
 - Memory usage (bytes + GB)
@@ -152,13 +165,14 @@ Includes:
 
 # 🚨 Alerting Logic (IMPORTANT)
 
-Emails are sent **ONLY when problematic pods exist**.
+Alerts are sent ONLY when problematic pods exist.
 
-### ✅ Email WILL be sent if:
+### ✅ Triggered when:
 
-- Pod status is NOT:
-  - `Running`
-  - `Succeeded`
+Pod status is NOT:
+
+- `Running`
+- `Succeeded`
 
 Examples:
 
@@ -167,32 +181,30 @@ Examples:
 - `CrashLoopBackOff`
 - `Unknown`
 
----
+### ❌ Not triggered when:
 
-### ❌ Email will NOT be sent if:
-
-- All pods are healthy (`Running` / `Succeeded`)
-
----
+- All pods are healthy
 
 ### 🔁 Check Interval
 
-```bash
+```
 */10 * * * *
 ```
 
-Every 10 minutes via cron.
+Runs every 10 minutes via cron.
 
 ---
 
 # 📧 Email Behavior
 
 - Sends **ONE aggregated email**
-- Includes all problematic pods
 - Supports **multiple recipients**
-- Highlights:
-  - 🔴 Critical → Failed / CrashLoopBackOff
-  - 🟡 Warning → others
+- Includes all problematic pods
+
+Severity:
+
+- 🔴 Critical → Failed, CrashLoopBackOff
+- 🟡 Warning → others
 
 ---
 
@@ -201,6 +213,22 @@ Every 10 minutes via cron.
 | Environment | Pod     | Status | Namespace | Host     |
 | ----------- | ------- | ------ | --------- | -------- |
 | k8s-dev     | api-xyz | Failed | default   | 10.x.x.x |
+
+---
+
+# ❤️ Health Check
+
+```
+GET /health/check
+```
+
+Response:
+
+```
+OK
+```
+
+Used by Docker healthcheck to ensure container is running properly.
 
 ---
 
@@ -213,58 +241,46 @@ Monitoring Service (Node.js)
      ↓
 Aggregation Layer
      ↓
-REST API + Email Alerts
+REST API + Alerting System
 ```
 
 ---
 
 # ⚡ Performance Notes
 
-- Uses concurrency control (`p-limit`)
-- Avoids API overload
-- Fault-tolerant per environment
-- Safe for multi-cluster setups
+- 🚀 Single API call per resource (optimized)
+- ⚡ Fast response time (~1–2s)
+- 🔁 Optional caching support
+- 🛡 Fault-tolerant per environment
 
 ---
 
 # 🔒 Security Notes
 
-- Never commit `.env`
-- Keep `PTOKEN` private
+- Never commit .env
+- Keep PTOKEN private
+- Prefer token over username/password
 - Use secure SMTP credentials
 
 ---
 
 # 🛠️ Development
 
-```bash
+```
 npm install
-npm start
-```
-
----
-
-# 📬 Health Check
-
-```
-GET /health
-```
-
-Response:
-
-```
-OK
+npm run dev
 ```
 
 ---
 
 # 🚀 Future Improvements
 
-- Redis caching
+- MS Teams / Slack alert integration
 - Alert deduplication
-- WebSocket live metrics
-- Grafana-style dashboard
-- Kubernetes (Helm) deployment
+- Redis caching
+- WebSocket real-time updates
+- Dashboard (React + charts)
+- Helm / Kubernetes deployment
 
 ---
 
@@ -277,3 +293,5 @@ PRs and improvements are welcome.
 # 📄 License
 
 MIT
+
+---
