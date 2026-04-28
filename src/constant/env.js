@@ -2,8 +2,8 @@ const urlAPI = process.env.PURL;
 const API_KEY = process.env.PTOKEN;
 const mailUser = process.env.MAIL_USER;
 const mailPass = process.env.MAIL_PASS;
-const mailHost = smtp.office365.com;
-const mailPort = 587;
+const mailHost = process.env.MAIL_HOST;
+const mailPort = process.env.MAIL_PORT;
 const mailRecipients = process.env.MAIL_RECIPIENTS;
 
 module.exports = {

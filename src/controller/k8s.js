@@ -1,8 +1,8 @@
-const axios = require('axios');
-const https = require('https');
-const { urlAPI } = require('../constant/env');
-const { header } = require('../constant/header');
-const pLimit = require('p-limit').default;
+const axios = require("axios");
+const https = require("https");
+const { urlAPI } = require("../constant/env");
+const { header } = require("../constant/header");
+const pLimit = require("p-limit").default;
 const limit = pLimit(5);
 
 const agent = new https.Agent({
@@ -16,16 +16,8 @@ const api = axios.create({
   timeout: 5000,
 });
 
-let cache = null;
-let lastFetch = 0;
-let servicesCache = null;
-let servicesLastFetch = 0;
-let nodeCache = null;
-let nodeLastFetch = 0;
-const CACHE_TTL = 30 * 1000;
-
 const getKubeEnvironments = async () => {
-  const { data } = await api.get('/endpoints');
+  const { data } = await api.get("/endpoints");
 
   return data.filter(
     (env) =>
@@ -37,28 +29,28 @@ const getKubeEnvironments = async () => {
 const toCores = (nano) =>
   parseFloat((parseFloat(nano || 0) / 1_000_000_000).toFixed(4));
 
-const kiToBytes = (val) => parseInt(val?.replace('Ki', '') || 0) * 1024;
+const kiToBytes = (val) => parseInt(val?.replace("Ki", "") || 0) * 1024;
 
 const bytesToGB = (bytes) => parseFloat((bytes / 1024 ** 3).toFixed(2));
 
 exports.getEnvironment = async (req, res) => {
   try {
-    const result = await axios.get(urlAPI + '/endpoints', {
+    const result = await axios.get(urlAPI + "/endpoints", {
       headers: header,
       httpsAgent: agent,
     });
 
     res.status(200).send({
-      status: 'Success',
+      status: "Success",
       data: result.data,
     });
   } catch (error) {
     console.error(
-      'Error in getEnvironment:',
+      "Error in getEnvironment:",
       error.response ? error.response.data : error.message,
     );
     res.status(400).send({
-      status: 'Failed',
+      status: "Failed",
       message: error.message,
       error: error.response ? error.response.data : error,
     });
@@ -77,7 +69,7 @@ exports.getAllNS = async (req, res) => {
           const namespaces = (data || [])
             .map((item) => ({
               name: item.Name,
-              status: item?.Status?.phase || 'Unknown',
+              status: item?.Status?.phase || "Unknown",
               createdAt: item.CreationTimestamp,
             }))
             .sort((a, b) => a.name.localeCompare(b.name));
@@ -108,16 +100,14 @@ exports.getAllNS = async (req, res) => {
       }),
     );
 
-    // sort environments by name
     const sorted = results.sort((a, b) =>
       a.environment.name.localeCompare(b.environment.name),
     );
 
-    // total across all environments
     const grandTotal = sorted.reduce((acc, curr) => acc + curr.total, 0);
 
     res.status(200).send({
-      status: 'Success',
+      status: "Success",
       data: {
         total: grandTotal,
         environments: sorted,
@@ -125,7 +115,7 @@ exports.getAllNS = async (req, res) => {
     });
   } catch (error) {
     res.status(400).send({
-      status: 'Failed',
+      status: "Failed",
       message: error.message,
     });
   }
@@ -134,10 +124,6 @@ exports.getAllNS = async (req, res) => {
 exports.getServices = async (req, res) => {
   try {
     const now = Date.now();
-
-    if (servicesCache && now - servicesLastFetch < CACHE_TTL) {
-      return res.status(200).send(servicesCache);
-    }
 
     const envs = await getKubeEnvironments();
 
@@ -157,7 +143,7 @@ exports.getServices = async (req, res) => {
           const namespaceMap = {};
 
           items.forEach((svc) => {
-            const namespace = svc.metadata?.namespace || 'unknown';
+            const namespace = svc.metadata?.namespace || "unknown";
 
             if (!namespaceMap[namespace]) {
               namespaceMap[namespace] = {
@@ -222,20 +208,17 @@ exports.getServices = async (req, res) => {
     );
 
     const response = {
-      status: 'Success',
+      status: "Success",
       data: {
         total: globalTotal,
         environments: sorted,
       },
     };
 
-    servicesCache = response;
-    servicesLastFetch = now;
-
     res.status(200).send(response);
   } catch (error) {
     res.status(400).send({
-      status: 'Failed',
+      status: "Failed",
       message: error.message,
     });
   }
@@ -244,10 +227,6 @@ exports.getServices = async (req, res) => {
 exports.getPodsMetrics = async (req, res) => {
   try {
     const now = Date.now();
-
-    if (cache && now - lastFetch < CACHE_TTL) {
-      return res.status(200).send(cache);
-    }
 
     const envs = await getKubeEnvironments();
 
@@ -278,14 +257,14 @@ exports.getPodsMetrics = async (req, res) => {
           const namespaceMap = {};
 
           items.forEach((pod) => {
-            const namespace = pod.metadata?.namespace || 'unknown';
-            const phase = pod?.status?.phase || 'Unknown';
+            const namespace = pod.metadata?.namespace || "unknown";
+            const phase = pod?.status?.phase || "Unknown";
 
             const isCrashLoop = pod?.status?.containerStatuses?.some(
-              (c) => c?.state?.waiting?.reason === 'CrashLoopBackOff',
+              (c) => c?.state?.waiting?.reason === "CrashLoopBackOff",
             );
 
-            const finalPhase = isCrashLoop ? 'CrashLoopBackOff' : phase;
+            const finalPhase = isCrashLoop ? "CrashLoopBackOff" : phase;
 
             globalTotalPods++;
             envTotalPods++;
@@ -352,7 +331,7 @@ exports.getPodsMetrics = async (req, res) => {
     );
 
     const response = {
-      status: 'Success',
+      status: "Success",
       data: {
         total: {
           all: globalTotalPods,
@@ -362,13 +341,10 @@ exports.getPodsMetrics = async (req, res) => {
       },
     };
 
-    cache = response;
-    lastFetch = now;
-
     res.status(200).send(response);
   } catch (error) {
     res.status(400).send({
-      status: 'Failed',
+      status: "Failed",
       message: error.message,
     });
   }
@@ -377,10 +353,6 @@ exports.getPodsMetrics = async (req, res) => {
 exports.getNodeMetrics = async (req, res) => {
   try {
     const now = Date.now();
-
-    if (nodeCache && now - nodeLastFetch < CACHE_TTL) {
-      return res.status(200).send(nodeCache);
-    }
 
     const envs = await getKubeEnvironments();
 
@@ -407,7 +379,7 @@ exports.getNodeMetrics = async (req, res) => {
             const cpuTotal = parseInt(node.status?.capacity?.cpu || 0);
             const memTotalBytes = kiToBytes(node.status?.capacity?.memory);
 
-            const cpuUsed = toCores(metric?.usage?.cpu || '0n');
+            const cpuUsed = toCores(metric?.usage?.cpu || "0n");
             const memUsedBytes = kiToBytes(metric?.usage?.memory);
 
             const cpuAvailable = cpuTotal - cpuUsed;
@@ -422,17 +394,17 @@ exports.getNodeMetrics = async (req, res) => {
               : 0;
 
             const readyCondition = node.status?.conditions?.find(
-              (c) => c.type === 'Ready',
+              (c) => c.type === "Ready",
             );
 
             const internalIP = node.status?.addresses?.find(
-              (a) => a.type === 'InternalIP',
+              (a) => a.type === "InternalIP",
             )?.address;
 
             return {
               name,
               internalIP,
-              status: readyCondition?.status === 'True' ? 'Ready' : 'Not Ready',
+              status: readyCondition?.status === "True" ? "Ready" : "Not Ready",
 
               cpu: {
                 total: cpuTotal,
@@ -495,19 +467,16 @@ exports.getNodeMetrics = async (req, res) => {
     );
 
     const response = {
-      status: 'Success',
+      status: "Success",
       data: {
         environments: sorted,
       },
     };
 
-    nodeCache = response;
-    nodeLastFetch = now;
-
     res.status(200).send(response);
   } catch (error) {
     res.status(400).send({
-      status: 'Failed',
+      status: "Failed",
       message: error.message,
     });
   }

@@ -10,12 +10,14 @@ services:
       - PORT=6789
       - MAIL_USER=user@mail.com
       - MAIL_PASS=mail_password
+      - MAIL_HOST=yourmailhost
+      - MAIL_PORT=yourmailport
       - MAIL_RECIPIENTS=allyourrecipient # use comma to add more than one email
       - PTOKEN=your_portainer_token
       - PURL=https://your_portainer_url:9443/api
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "wget", "-qO-", "http://localhost:6789/health/check" ]
+      test: ["CMD", "wget", "-qO-", "http://localhost:6789/health/check"]
       interval: 30s
       timeout: 5s
       retries: 3

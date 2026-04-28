@@ -4,8 +4,8 @@ const cron = require("node-cron");
 
 const mailUser = process.env.MAIL_USER;
 const mailPass = process.env.MAIL_PASS;
-const mailHost = smtp.office365.com;
-const mailPort = 587;
+const mailHost = process.env.MAIL_HOST;
+const mailPort = process.env.MAIL_PORT;
 const mailRecipients = process.env.MAIL_RECIPIENTS;
 
 const fs = require("fs");
