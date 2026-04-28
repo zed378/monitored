@@ -164,11 +164,33 @@ exports.getServices = async (req, res) => {
               clusterIP: svc.spec?.clusterIP,
               externalIP: svc.status?.loadBalancer?.ingress?.[0]?.ip || null,
               ports:
-                svc.spec?.ports?.map((p) => ({
-                  port: p.port,
-                  targetPort: p.targetPort,
-                  protocol: p.protocol,
-                })) || [],
+                svc.spec?.ports?.map((p) => {
+                  if (svc.spec?.type === "NodePort") {
+                    return {
+                      nodePort: p.nodePort,
+                      port: p.port,
+                      targetPort: p.targetPort,
+                      protocol: p.protocol,
+                      display: `${p.nodePort} → ${p.port}`,
+                    };
+                  }
+
+                  if (svc.spec?.type === "LoadBalancer") {
+                    return {
+                      port: p.port,
+                      targetPort: p.targetPort,
+                      protocol: p.protocol,
+                      display: `${p.port}`,
+                    };
+                  }
+
+                  return {
+                    port: p.port,
+                    targetPort: p.targetPort,
+                    protocol: p.protocol,
+                    display: `${p.port}`,
+                  };
+                }) || [],
               createdAt: svc.metadata?.creationTimestamp,
             });
           });
