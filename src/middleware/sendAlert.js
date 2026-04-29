@@ -7,6 +7,7 @@ const mailPass = process.env.MAIL_PASS;
 const mailHost = process.env.MAIL_HOST;
 const mailPort = process.env.MAIL_PORT;
 const mailRecipients = process.env.MAIL_RECIPIENTS;
+const cronJob = process.env.CRON_EXPRESSION;
 
 const fs = require("fs");
 const mustache = require("mustache");
@@ -117,7 +118,7 @@ async function sendMail() {
 function scheduledCheckService() {
   console.log("Cron started!");
 
-  cron.schedule("*/10 * * * *", async () => {
+  cron.schedule(cronJob ? cronJob : "*/10 * * * *", async () => {
     try {
       await sendMail();
     } catch (error) {

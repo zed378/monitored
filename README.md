@@ -71,6 +71,9 @@ PURL=https://your-portainer-url:9443/api
 # (Optional) Fallback login if token not used
 PUSER=your_portainer_username
 PPASS=your_portainer_password
+
+# Cron expression for scheduling send alert. Default is every 10 minutes.
+CRON_EXPRESSION="*/10 * * * *"
 ```
 
 ---
@@ -105,6 +108,9 @@ services:
       # (Optional)
       - PUSER=yourportaineruser
       - PPASS=yourportainerpassword
+
+      # Cron expression default is every 10 minutes
+      - CRON_EXPRESSION="*/10 * * * *"
 
     restart: unless-stopped
 

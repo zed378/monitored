@@ -7,6 +7,7 @@ const mailPort = process.env.MAIL_PORT;
 const mailRecipients = process.env.MAIL_RECIPIENTS;
 const portUser = process.env.PUSER;
 const portPass = process.env.PPASS;
+const cronJob = process.env.CRON_EXPRESSION;
 
 module.exports = {
   urlAPI,
@@ -18,4 +19,5 @@ module.exports = {
   mailPort,
   portPass,
   portUser,
+  cronJob,
 };
