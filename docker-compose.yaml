@@ -17,6 +17,7 @@ services:
       - PURL=https://your_portainer_url:9443/api
       - PUSER=yourportaineruser
       - PPASS=yourportainerpassword
+      - MSTEAMS_WEBHOOK_URL=your_msteams_webhook_url
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:6789/health/check"]

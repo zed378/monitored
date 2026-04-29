@@ -8,6 +8,7 @@ const mailRecipients = process.env.MAIL_RECIPIENTS;
 const portUser = process.env.PUSER;
 const portPass = process.env.PPASS;
 const cronJob = process.env.CRON_EXPRESSION;
+const teamsHook = process.env.MSTEAMS_WEBHOOK_URL;
 
 module.exports = {
   urlAPI,
@@ -20,4 +21,5 @@ module.exports = {
   portPass,
   portUser,
   cronJob,
+  teamsHook,
 };

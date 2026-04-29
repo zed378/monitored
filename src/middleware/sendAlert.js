@@ -8,6 +8,7 @@ const mailHost = process.env.MAIL_HOST;
 const mailPort = process.env.MAIL_PORT;
 const mailRecipients = process.env.MAIL_RECIPIENTS;
 const cronJob = process.env.CRON_EXPRESSION;
+const teamsHook = process.env.MSTEAMS_WEBHOOK_URL;
 
 const fs = require("fs");
 const mustache = require("mustache");
@@ -115,12 +116,67 @@ async function sendMail() {
   }
 }
 
+async function sendTeamsAlert() {
+  try {
+    if (!teamsHook) {
+      console.log("⚠️ MSTEAMS_WEBHOOK_URL not set");
+      return;
+    }
+
+    const pods = (await getNonRunningPods()).map((pod) => ({
+      ...pod,
+      isCritical: pod.phase === "Failed" || pod.phase === "CrashLoopBackOff",
+    }));
+
+    if (!pods || pods.length === 0) {
+      console.log("✅ No problematic pods (Teams skipped)");
+      return;
+    }
+
+    // limit to avoid payload too large
+    const limitedPods = pods.slice(0, 50);
+
+    const facts = limitedPods.map((pod) => ({
+      name: `${pod.environment} / ${pod.namespace}`,
+      value: `**${pod.name}** → ${pod.phase}`,
+    }));
+
+    const payload = {
+      "@type": "MessageCard",
+      "@context": "http://schema.org/extensions",
+      summary: "Kubernetes Alert",
+      themeColor: "FF0000",
+      title: `🚨 ${pods.length} Problematic Pods Detected`,
+      sections: [
+        {
+          activityTitle: "Kubernetes Monitoring Alert",
+          facts,
+          markdown: true,
+        },
+      ],
+    };
+
+    if (pods.length > 50) {
+      payload.sections.push({
+        text: `⚠️ Showing first 20 of ${pods.length} pods`,
+      });
+    }
+
+    await axios.post(teamsHook, payload);
+
+    console.log("📣 Teams alert sent!");
+  } catch (err) {
+    console.error("❌ Teams alert error:", err.message);
+  }
+}
+
 function scheduledCheckService() {
   console.log("Cron started!");
 
   cron.schedule(cronJob ? cronJob : "*/10 * * * *", async () => {
     try {
       await sendMail();
+      await sendTeamsAlert();
     } catch (error) {
       console.error("Error during sending alert request:", error.message);
     }
