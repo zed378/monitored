@@ -1,18 +1,18 @@
-const express = require('express');
-require('dotenv').config();
-const cors = require('cors');
+const express = require("express");
+require("dotenv").config();
+const cors = require("cors");
 
-const rateLimit = require('express-rate-limit');
-const helmet = require('helmet');
-const xss = require('xss-clean');
+const rateLimit = require("express-rate-limit");
+const helmet = require("helmet");
+const xss = require("xss-clean");
 
-const { scheduledCheckService } = require('./src/middleware/sendAlert');
+const { scheduledCheckService } = require("./src/middleware/sendAlert");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -26,17 +26,19 @@ app.use(helmet());
 app.use(xss());
 
 // Routes
-const k8sRoutes = require('./src/routes/k8s');
-const healthRoutes = require('./src/routes/healtcheck');
+const k8sRoutes = require("./src/routes/k8s");
+const healthRoutes = require("./src/routes/healtcheck");
+const dockerRoutes = require("./src/routes/docker");
 
 // Endpoint
-app.use('/k8s', k8sRoutes);
-app.use('/health', healthRoutes);
+app.use("/k8s", k8sRoutes);
+app.use("/health", healthRoutes);
+app.use("/docker", dockerRoutes);
 
-app.get('/', (req, res) => {
+app.get("/", (req, res) => {
   res.status(200).send({
-    status: 'Success',
-    message: 'Your API is running',
+    status: "Success",
+    message: "Your API is running",
   });
 });
 

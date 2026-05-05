@@ -19,11 +19,7 @@ const api = axios.create({
 const getKubeEnvironments = async () => {
   const { data } = await api.get("/endpoints");
 
-  return data.filter(
-    (env) =>
-      env.Type === 6 && // your case
-      env.Status === 1,
-  );
+  return data.filter((env) => env.Type === 6 && env.Status === 1);
 };
 
 const toCores = (nano) =>
