@@ -32,7 +32,9 @@ const transporter = nodemailer.createTransport({
 
 async function getNonRunningPods() {
   try {
-    const response = await axios.get("http://localhost:6789/k8s/metrics");
+    const response = await axios.get("http://localhost:6789/k8s/metrics", {
+      timeout: 5000,
+    });
 
     const envs = response.data?.data?.environments;
 
@@ -44,24 +46,18 @@ async function getNonRunningPods() {
 
     for (const env of envs) {
       for (const ns of env.namespaces || []) {
-        const namespace = ns.namespace;
+        const namespace = ns.namespace || "unknown";
 
-        if (
-          !Array.isArray(ns.pods) ||
-          namespace.toLowerCase().includes("kube") ||
-          namespace.toLowerCase().includes("cert-manager")
-        ) {
-          continue;
-        }
+        const pods = Array.isArray(ns.pods) ? ns.pods : [];
 
-        const nonRunning = ns.pods.filter(
+        const nonRunning = pods.filter(
           (pod) => pod.phase !== "Running" && pod.phase !== "Succeeded",
         );
 
         problematicPods.push(
           ...nonRunning.map((pod) => ({
             ...pod,
-            environment: env.environment?.name,
+            environment: env.environment?.name || "unknown",
           })),
         );
       }
@@ -69,21 +65,16 @@ async function getNonRunningPods() {
 
     return problematicPods;
   } catch (err) {
-    console.error("Error fetching metrics:", err.message);
+    console.error("Error fetching metrics:", err.response?.data || err.message);
     return [];
   }
 }
 
-async function sendMail() {
+async function sendMail(pods) {
   try {
     if (!mailRecipients) {
       throw new Error("MAIL_RECIPIENTS is not defined");
     }
-
-    const pods = (await getNonRunningPods()).map((pod) => ({
-      ...pod,
-      isCritical: pod.phase === "Failed" || pod.phase === "CrashLoopBackOff",
-    }));
 
     if (!Array.isArray(pods) || pods.length === 0) {
       console.log("✅ No problematic pods found. Skipping email.");
@@ -116,55 +107,51 @@ async function sendMail() {
   }
 }
 
-async function sendTeamsAlert() {
+async function sendTeamsAlert(pods) {
   try {
     if (!teamsHook) {
       console.log("⚠️ MSTEAMS_WEBHOOK_URL not set");
       return;
     }
 
-    const pods = (await getNonRunningPods()).map((pod) => ({
-      ...pod,
-      isCritical: pod.phase === "Failed" || pod.phase === "CrashLoopBackOff",
-    }));
-
     if (!pods || pods.length === 0) {
       console.log("✅ No problematic pods (Teams skipped)");
       return;
     }
 
-    // limit to avoid payload too large
-    const limitedPods = pods.slice(0, 50);
+    const chunkSize = 20;
+    const chunks = chunkArray(pods, chunkSize);
 
-    const facts = limitedPods.map((pod) => ({
-      name: `${pod.environment} / ${pod.namespace}`,
-      value: `**${pod.name}** → ${pod.phase}`,
-    }));
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
 
-    const payload = {
-      "@type": "MessageCard",
-      "@context": "http://schema.org/extensions",
-      summary: "Kubernetes Alert",
-      themeColor: "FF0000",
-      title: `🚨 ${pods.length} Problematic Pods Detected`,
-      sections: [
-        {
-          activityTitle: "Kubernetes Monitoring Alert",
-          facts,
-          markdown: true,
-        },
-      ],
-    };
+      const facts = chunk.map((pod) => ({
+        name: `${pod.environment} / ${pod.namespace}`,
+        value: `**${pod.name}** → ${pod.phase}`,
+      }));
 
-    if (pods.length > 50) {
-      payload.sections.push({
-        text: `⚠️ Showing first 20 of ${pods.length} pods`,
-      });
+      const payload = {
+        "@type": "MessageCard",
+        "@context": "http://schema.org/extensions",
+        summary: "Kubernetes Alert",
+        themeColor: "FF0000",
+        title: `🚨 Pods Alert (${i + 1}/${chunks.length})`,
+        sections: [
+          {
+            activityTitle: `Detected ${pods.length} problematic pods`,
+            facts,
+            markdown: true,
+          },
+        ],
+      };
+
+      await axios.post(teamsHook, payload);
+
+      console.log(`📣 Teams alert sent (${i + 1}/${chunks.length})`);
+
+      // small delay to avoid rate limit
+      await new Promise((r) => setTimeout(r, 500));
     }
-
-    await axios.post(teamsHook, payload);
-
-    console.log("📣 Teams alert sent!");
   } catch (err) {
     console.error("❌ Teams alert error:", err.message);
   }
@@ -175,12 +162,30 @@ function scheduledCheckService() {
 
   cron.schedule(cronJob ? cronJob : "*/10 * * * *", async () => {
     try {
-      await sendMail();
-      await sendTeamsAlert();
+      const pods = (await getNonRunningPods()).map((pod) => ({
+        ...pod,
+        isCritical: pod.phase === "Failed" || pod.phase === "CrashLoopBackOff",
+      }));
+
+      if (!pods.length) {
+        console.log("✅ No problematic pods.");
+        return;
+      }
+
+      await sendMail(pods);
+      await sendTeamsAlert(pods);
     } catch (error) {
-      console.error("Error during sending alert request:", error.message);
+      console.error("Error during alert:", error.message);
     }
   });
+}
+
+function chunkArray(arr, size) {
+  const chunks = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
 }
 
 module.exports = { scheduledCheckService };
