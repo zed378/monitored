@@ -1,5 +1,5 @@
 const express = require("express");
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 const cors = require("cors");
 
 const rateLimit = require("express-rate-limit");
@@ -16,7 +16,7 @@ app.set("trust proxy", 1);
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Limit each IP to 1000 requests per `window` (here, per 15 minutes)
+  limit: 1000, // Limit each IP to 1000 requests per `window` (here, per 15 minutes)
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });

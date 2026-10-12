@@ -1,23 +1,7 @@
-const axios = require("axios");
-const https = require("https");
-const { urlAPI } = require("../constant/env");
-const { header } = require("../constant/header");
-const pLimit = require("p-limit").default;
-const limit = pLimit(5);
-
-const agent = new https.Agent({
-  rejectUnauthorized: false,
-});
-
-const api = axios.create({
-  baseURL: urlAPI,
-  headers: header,
-  httpsAgent: agent,
-  timeout: 5000,
-});
+const { api, cached, getEndpoints, DATA_TTL } = require("../constant/portainer");
 
 const getKubeEnvironments = async () => {
-  const { data } = await api.get("/endpoints");
+  const data = await getEndpoints();
 
   return data.filter((env) => env.Type === 6 && env.Status === 1);
 };
@@ -31,14 +15,11 @@ const bytesToGB = (bytes) => parseFloat((bytes / 1024 ** 3).toFixed(2));
 
 exports.getEnvironment = async (req, res) => {
   try {
-    const result = await axios.get(urlAPI + "/endpoints", {
-      headers: header,
-      httpsAgent: agent,
-    });
+    const data = await getEndpoints();
 
     res.status(200).send({
       status: "Success",
-      data: result.data,
+      data,
     });
   } catch (error) {
     console.error(
@@ -60,7 +41,9 @@ exports.getAllNS = async (req, res) => {
     const results = await Promise.all(
       envs.map(async (env) => {
         try {
-          const { data } = await api.get(`/kubernetes/${env.Id}/namespaces`);
+          const data = await cached(`k8s:ns:${env.Id}`, DATA_TTL, async () =>
+            (await api.get(`/kubernetes/${env.Id}/namespaces`)).data,
+          );
 
           const namespaces = (data || [])
             .map((item) => ({
@@ -119,8 +102,6 @@ exports.getAllNS = async (req, res) => {
 
 exports.getServices = async (req, res) => {
   try {
-    const now = Date.now();
-
     const envs = await getKubeEnvironments();
 
     let globalTotal = 0;
@@ -128,8 +109,10 @@ exports.getServices = async (req, res) => {
     const environments = await Promise.all(
       envs.map(async (env) => {
         try {
-          const { data } = await api.get(
-            `/endpoints/${env.Id}/kubernetes/api/v1/services`,
+          const data = await cached(`k8s:svc:${env.Id}`, DATA_TTL, async () =>
+            (
+              await api.get(`/endpoints/${env.Id}/kubernetes/api/v1/services`)
+            ).data,
           );
 
           const items = data?.items || [];
@@ -244,8 +227,6 @@ exports.getServices = async (req, res) => {
 
 exports.getPodsMetrics = async (req, res) => {
   try {
-    const now = Date.now();
-
     const envs = await getKubeEnvironments();
 
     const phaseTemplate = {
@@ -263,8 +244,8 @@ exports.getPodsMetrics = async (req, res) => {
     const environments = await Promise.all(
       envs.map(async (env) => {
         try {
-          const { data } = await api.get(
-            `/endpoints/${env.Id}/kubernetes/api/v1/pods`,
+          const data = await cached(`k8s:pods:${env.Id}`, DATA_TTL, async () =>
+            (await api.get(`/endpoints/${env.Id}/kubernetes/api/v1/pods`)).data,
           );
 
           const items = data?.items || [];
@@ -370,20 +351,23 @@ exports.getPodsMetrics = async (req, res) => {
 
 exports.getNodeMetrics = async (req, res) => {
   try {
-    const now = Date.now();
-
     const envs = await getKubeEnvironments();
 
     const environments = await Promise.all(
       envs.map(async (env) => {
         try {
-          const [nodeRes, metricRes] = await Promise.all([
-            api.get(`/endpoints/${env.Id}/kubernetes/api/v1/nodes`),
-            api.get(`/kubernetes/${env.Id}/metrics/nodes`),
+          const [nodeData, metricData] = await Promise.all([
+            cached(`k8s:nodes:${env.Id}`, DATA_TTL, async () =>
+              (await api.get(`/endpoints/${env.Id}/kubernetes/api/v1/nodes`))
+                .data,
+            ),
+            cached(`k8s:nodemetrics:${env.Id}`, DATA_TTL, async () =>
+              (await api.get(`/kubernetes/${env.Id}/metrics/nodes`)).data,
+            ),
           ]);
 
-          const nodes = nodeRes.data?.items || [];
-          const metrics = metricRes.data?.items || [];
+          const nodes = nodeData?.items || [];
+          const metrics = metricData?.items || [];
 
           const metricMap = {};
           metrics.forEach((m) => {

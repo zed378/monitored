@@ -1,23 +1,7 @@
-const axios = require("axios");
-const https = require("https");
-const { urlAPI } = require("../constant/env");
-const { header } = require("../constant/header");
-const pLimit = require("p-limit").default;
-const limit = pLimit(5);
-
-const agent = new https.Agent({
-  rejectUnauthorized: false,
-});
-
-const api = axios.create({
-  baseURL: urlAPI,
-  headers: header,
-  httpsAgent: agent,
-  timeout: 5000,
-});
+const { api, cached, getEndpoints, DATA_TTL } = require("../constant/portainer");
 
 const getDockerEnvironments = async () => {
-  const { data } = await api.get("/endpoints");
+  const data = await getEndpoints();
 
   return data.filter(
     (env) => (env.Type === 1 || env.Type === 2) && env.Status === 1,
@@ -35,8 +19,12 @@ exports.getDockerContainers = async (req, res) => {
     const environments = await Promise.all(
       envs.map(async (env) => {
         try {
-          const { data } = await api.get(
-            `/endpoints/${env.Id}/docker/containers/json?all=true`,
+          const data = await cached(`docker:containers:${env.Id}`, DATA_TTL, async () =>
+            (
+              await api.get(
+                `/endpoints/${env.Id}/docker/containers/json?all=true`,
+              )
+            ).data,
           );
 
           const containers = data || [];
@@ -125,7 +113,9 @@ exports.getDockerHostMetrics = async (req, res) => {
     const environments = await Promise.all(
       envs.map(async (env) => {
         try {
-          const { data } = await api.get(`/endpoints/${env.Id}/docker/info`);
+          const data = await cached(`docker:info:${env.Id}`, DATA_TTL, async () =>
+            (await api.get(`/endpoints/${env.Id}/docker/info`)).data,
+          );
 
           return {
             environment: {

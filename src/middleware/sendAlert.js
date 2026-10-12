@@ -1,5 +1,4 @@
 const axios = require("axios");
-require("dotenv").config();
 const cron = require("node-cron");
 
 const mailUser = process.env.MAIL_USER;
